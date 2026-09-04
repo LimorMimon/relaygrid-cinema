@@ -9,11 +9,14 @@ import { STATUS_LABELS, type StreamRecord } from "@/lib/domains/cinema";
 // at high opacity. A wash of the saturated color reads as unmistakably
 // tinted at a glance down a dense 220-row table.
 const statusRowClasses: Record<StreamRecord["status"], string> = {
-  // Deliberately a gentler wash than the other four — Healthy is the
-  // majority status (most of 220 rows), so full-strength green everywhere
-  // would drown out the amber/red rows that actually need attention. Still
-  // clearly, confirmably green, just quieter.
-  Healthy: "bg-good/[0.07] hover:bg-good/15",
+  // No wash at all, on purpose — Healthy is the majority status (most of
+  // 220 rows), so the fastest scan signal is "colored row = needs a look,
+  // blank row = fine" rather than trading one color for another. It also
+  // means a row that just got fixed reads as a bigger visual relief
+  // (color → no color) than a same-weight color swap would. The badge in
+  // the last column still labels it green explicitly for anyone checking
+  // that specific row.
+  Healthy: "hover:bg-panel-2",
   Degraded: "bg-caution/[0.16] hover:bg-caution/25",
   // Deliberately the strongest wash of the five — Failing is the single
   // worst status a stream can be in, and should read as more urgent than
@@ -24,7 +27,7 @@ const statusRowClasses: Record<StreamRecord["status"], string> = {
 };
 /** Applied to the first `<td>` only — a left border on `<tr>` itself renders unreliably under border-collapse. */
 const statusAccentClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "border-l-2 border-good/50",
+  Healthy: "border-l-2 border-transparent",
   Degraded: "border-l-2 border-caution",
   // Thicker than the other four (border-l-4 vs border-l-2) — the one status
   // that should never blend into the rest of the table.
@@ -33,7 +36,7 @@ const statusAccentClasses: Record<StreamRecord["status"], string> = {
   "Auto-Resolved": "border-l-2 border-auto",
 };
 const statusIdTextClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "text-good",
+  Healthy: "text-signal",
   Degraded: "text-caution",
   Failing: "text-alert font-bold",
   Rerouted: "text-signal",
@@ -111,7 +114,11 @@ export function RelayGrid({
                   key={r.id}
                   onClick={() => onSelect(r)}
                   className={`cursor-pointer border-b border-line/70 transition-colors last:border-b-0 ${statusRowClasses[r.status]} ${
-                    isSelected ? "outline outline-1 -outline-offset-1 outline-signal" : ""
+                    // Neutral, not a status hue — "selected" means "this is what
+                    // I'm looking at," never "this row is healthy/rerouted." A
+                    // fixed teal ring would read as a second, contradictory
+                    // status color on a Failing/Degraded row.
+                    isSelected ? "outline outline-1 -outline-offset-1 outline-ink" : ""
                   }`}
                 >
                   <td className={`whitespace-nowrap px-3 py-2.5 font-display text-xs font-medium ${statusIdTextClasses[r.status]} ${statusAccentClasses[r.status]}${flash}`}>
