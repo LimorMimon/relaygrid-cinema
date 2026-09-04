@@ -2,12 +2,12 @@
 
 A domain-agnostic agentic grid engine, launched with its first domain: **Media, Streaming & Cinema Operations**. Built for the Google Cloud Agentic Cinema Hackathon on **Gemini** (`@google/genai`) and the **WebMCP / MCP** protocol.
 
+**Live:** https://relaygrid-cinema.vercel.app · **Repo:** https://github.com/LimorMimon/relaygrid-cinema
+
 > **Current scope / known gaps vs. the Devpost requirements**
 > This build is an in-progress milestone for the [Agentic Cinema hackathon](https://agentic-cinema.devpost.com/), not a submission-ready entry yet. Phase 1 gets the Gemini + WebMCP/MCP application layer working end-to-end, with clean seams left for the two still-mandatory pieces:
 > 1. **Google Cloud Agent Builder / the Gemini Enterprise Agent Platform** — today the app calls the public Gemini API directly (`@google/genai` against an AI Studio key) through the `gemini-direct` agent backend (see `lib/agent-backends/`). `lib/agent-backends/agent-builder.ts` is the drop-in seam for the real integration; it currently throws "not implemented."
 > 2. **A Partner Track integration** — Grafana Labs or Replit (decision pending). `lib/partner-mcp.ts` is the seam where a partner's MCP tools would be merged into the tool list; it currently returns none.
->
-> It's also not yet hosted anywhere public and isn't pushed to a public repository with commit history. These are tracked as follow-up work, not oversights.
 
 Split-screen layout:
 
