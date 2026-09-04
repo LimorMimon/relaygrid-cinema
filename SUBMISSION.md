@@ -12,10 +12,14 @@ sent anywhere automatically.
       spawns the official `mcp-clickhouse` MCP server and writes every sponsor event into a
       real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
       — it's marked "Live", not "Simulated"). Grafana and Replit remain simulated previews.
-- [ ] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — the app currently
-      calls the public Gemini API directly (`lib/agent-backends/gemini-direct.ts`), not
-      through Agent Builder. `lib/agent-backends/agent-builder.ts` is the seam for this but
-      isn't implemented. This is a mandatory stack requirement, independent of partner track.
+- [ ] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — code-complete,
+      **not yet verified against a live GCP project**. `lib/agent-backends/agent-builder.ts`
+      calls `@google/genai` with `vertexai: true` against a real Google Cloud project
+      (`google-genai`/`@google/genai` is explicitly listed as an accepted SDK on the
+      hackathon's rules page). Needs: a GCP project with Vertex AI API enabled, a service
+      account with the "Vertex AI User" role, and its JSON key + the project ID/region
+      filled into `.env.local`'s `GOOGLE_CLOUD_*` variables — then set
+      `AGENT_BACKEND=agent-builder` and confirm a chat turn actually round-trips.
 
 Submitting before these are done risks disqualification on "Technological Implementation"
 — see the earlier gap analysis in `README.md`.
@@ -80,10 +84,13 @@ mutating step can never be taken by the model itself, only by a human who saw th
 planner, generic over any record type. `lib/domains/cinema.ts` is the first concrete domain
 (Media & Streaming) built on that contract — the same engine is meant to support future
 domains (e.g. a healthcare worklist) without changes elsewhere. Gemini access goes through
-a swappable `lib/agent-backends/` interface so the current direct-API implementation can be
-replaced by a Google Cloud Agent Builder backend later without touching the UI or the tool
-layer. The UI is a three-column split screen (grid / judge guide + action card / agent
-chat) that reflows to two columns on tablets and one on phones.
+a swappable `lib/agent-backends/` interface (`AgentBackend`): both the default AI-Studio
+backend and the Google Cloud one share one function-calling loop
+(`lib/agent-backends/genai-shared.ts`) and differ only in how their `@google/genai` client
+authenticates — an API key vs. `vertexai: true` against a real GCP project — so the UI and
+tool layer never need to know which is active. The UI is a three-column split screen (grid
+/ judge guide + action card / agent chat) that reflows to two columns on tablets and one on
+phones.
 
 Policy-rule *authoring* is natural language; policy-rule *execution* deliberately isn't.
 `add_policy_rule` takes a plain-English request and Gemini's function call resolves it into
@@ -124,13 +131,11 @@ exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
 
 ## What's next
 
-Wire `lib/agent-backends/agent-builder.ts` to a real Google Cloud Agent Builder / Gemini
-Enterprise Agent Platform integration — a seam that was built into the architecture from
-the start specifically so this swap wouldn't require touching the UI, the domain engine, or
-the tool layer. `lib/partner-mcp.ts` has the same seam already proven out for ClickHouse;
-adding a real Grafana client behind it is the same shape of work, not a new pattern. Then
-implement the second domain (Healthcare/Radiology worklist) that this engine was designed
-to support.
+Verify `lib/agent-backends/agent-builder.ts` against a real GCP project — it's code-complete
+but untested end-to-end pending Vertex AI API + service-account setup (see the checklist
+above). `lib/partner-mcp.ts` has the same seam already proven out for ClickHouse; adding a
+real Grafana client behind it is the same shape of work, not a new pattern. Then implement
+the second domain (Healthcare/Radiology worklist) that this engine was designed to support.
 
 Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
 AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator
