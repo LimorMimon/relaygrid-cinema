@@ -1,31 +1,55 @@
+import { GoogleGenAI } from "@google/genai";
 import type { AgentBackend, AgentTurnRequest, AgentTurnResponse } from "./types";
+import { runGenAiTurn } from "./genai-shared";
 
 /**
- * NOT YET IMPLEMENTED.
+ * Google Cloud backend: the exact same function-calling loop as
+ * gemini-direct.ts (see genai-shared.ts), but through Vertex AI on a real
+ * GCP project instead of an AI Studio API key — this is what makes it
+ * "Google Cloud Agent Builder / Gemini Enterprise Agent Platform" usage for
+ * the hackathon's runtime-integration requirement (the @google/genai /
+ * google-genai package family is explicitly an accepted SDK; the
+ * distinguishing factor is `vertexai: true` plus a real project, not a
+ * different package). Deliberately NOT a deployed Vertex AI Agent Engine /
+ * ADK resource: that model bakes a fixed toolset into the agent at deploy
+ * time, whereas this app sends a different tool list on every request
+ * (each domain's own MCP tools, per lib/mcp-tools.ts) — a raw Vertex
+ * generateContent call keeps that fully dynamic, same as gemini-direct.ts.
  *
- * Intended Phase 2 backend: run this same tool-calling loop through Google
- * Cloud's Gemini Enterprise Agent Platform / Agent Builder instead of a bare
- * @google/genai call — i.e. create/reuse an Agent Builder app (Vertex AI
- * Discovery Engine "Agent" resource) for this project, register
- * lib/mcp-tools.ts's schemas as its tool/action set (directly, or by
- * fronting them with a managed MCP server), and call its session/query API
- * here instead of GoogleGenAI.models.generateContent.
- *
- * Config this will need once implemented: GOOGLE_CLOUD_PROJECT,
- * GOOGLE_CLOUD_LOCATION, AGENT_BUILDER_APP_ID, and application-default
- * credentials or a service account (IAM), rather than a single API key.
- *
- * The point of `AgentBackend` is that nothing else in the app — the route,
- * the browser chat loop, or the domain/MCP layer — needs to change to swap
- * this in; only AGENT_BACKEND and this file.
+ * Auth: GOOGLE_APPLICATION_CREDENTIALS_JSON holds the *entire contents* of
+ * a service account key file, as one line — not a file path, since
+ * Vercel's filesystem isn't a place to keep a secret file. That service
+ * account needs the "Vertex AI User" IAM role on GOOGLE_CLOUD_PROJECT.
  */
 export function createAgentBuilderBackend(): AgentBackend {
+  const project = process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+  const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+
   return {
     id: "agent-builder",
-    async runTurn(_request: AgentTurnRequest): Promise<AgentTurnResponse> {
-      throw new Error(
-        "The Google Cloud Agent Builder backend is not implemented yet. Set AGENT_BACKEND=gemini-direct to use the direct Gemini API backend.",
-      );
+    async runTurn(request: AgentTurnRequest): Promise<AgentTurnResponse> {
+      if (!project) {
+        throw new Error("GOOGLE_CLOUD_PROJECT is not configured on the server (see .env.local.example).");
+      }
+      let credentials: unknown;
+      if (credentialsJson) {
+        try {
+          credentials = JSON.parse(credentialsJson);
+        } catch {
+          throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON — paste the full key file contents as one line.");
+        }
+      }
+      // Falls back to Application Default Credentials (e.g. `gcloud auth
+      // application-default login` locally) when no explicit key is set.
+      const ai = new GoogleGenAI({
+        vertexai: true,
+        project,
+        location,
+        googleAuthOptions: credentials ? ({ credentials } as never) : undefined,
+      });
+      return runGenAiTurn(ai, model, request);
     },
   };
 }
