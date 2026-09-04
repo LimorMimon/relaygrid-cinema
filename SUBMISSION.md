@@ -34,16 +34,24 @@ Submitting before these are done risks disqualification on "Technological Implem
 Streaming/CDN infrastructure already does *some* self-healing — AWS Elemental MediaLive can
 auto-failover on audio loss, multi-CDN setups auto-reroute around a degraded network. But
 that automation is rigid and per-stream: a fixed threshold on one signal, no view of the
-fleet as a whole, and nothing you can question or reason with. The operator watching
-hundreds of streams still has to notice the pattern by hand — cross-referencing bitrate,
-audio, and subtitle telemetry across streams — before any of that automation even applies.
+fleet as a whole, and nothing an operator can question or reason with. An operator watching
+hundreds of streams still has to notice a cross-stream pattern by hand — correlating
+bitrate, audio, and subtitle telemetry — before any of that per-stream automation even
+applies.
 
-RelayGrid Cinema isn't another rigid rule-based failover trigger. It's the reasoning layer
-*above* that infrastructure: an agent that understands the whole grid, investigates a fault
-in plain language, and turns raw telemetry into an explained, ready-to-approve fix instead
-of a fixed if-audio-silent-then-failover rule. The risk of an agent this capable is letting
-it also *apply* the fix without a human actually looking at what will change — which is why
-every mutating action stays behind an explicit human "Approve & Execute" click.
+Broader IT/network operations have already started moving past this: modern AIOps
+platforms correlate across systems and gate risky actions behind human approval instead of
+running everything autonomously. That same reasoning-plus-approval layer doesn't yet exist
+for media/streaming ops specifically — the tools above still stop at a single fixed rule
+per stream.
+
+RelayGrid Cinema brings that layer to media ops. The agent understands the whole grid,
+investigates a fault in plain language across bitrate, audio, and subtitle signals
+together, and turns raw telemetry into an explained, ready-to-approve fix — instead of a
+fixed if-audio-silent-then-failover rule with no fleet-wide context. Every mutating action
+still stays behind an explicit human "Approve & Execute" click: the same trust-tiered
+autonomy AIOps already validates for risk-gating automated fixes, applied here to a domain
+that doesn't have it yet.
 
 ## What it does
 
