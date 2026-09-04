@@ -1,17 +1,21 @@
 "use client";
 /**
- * "Integrations" tab: a sponsor-facing surface showing what this app WOULD
- * send to three external services, rendered from the exact same event
- * stream that already drives the audit trail and the agent-chat narration
- * (see lib/sponsor-event-bus.ts and hooks/use-grid-agent.ts's
- * publishSponsorEvent calls). Every tab below is a SIMULATION — no network
- * call is made, and this app holds no Grafana/ClickHouse/Replit
- * credentials — so every panel carries an explicit "simulated" badge,
- * matching the same honesty the grid's own MCP Action Preview card already
- * practices ("no changes made" until a human approves).
+ * "Integrations" tab: a sponsor-facing surface built from the exact same
+ * event stream that already drives the audit trail and the agent-chat
+ * narration (see lib/sponsor-event-bus.ts and hooks/use-grid-agent.ts's
+ * publishSponsorEvent calls). Each tab renders that stream in its
+ * partner's own shape — but they're not all the same underneath:
+ *   - ClickHouse is REAL: every event is also written, via
+ *     ingestSponsorEventRemote -> app/api/sponsor-ingest/route.ts ->
+ *     lib/partner-mcp.ts, into an actual ClickHouse Cloud table through the
+ *     official mcp-clickhouse MCP server. LiveBadge says so.
+ *   - Grafana and Replit are still SIMULATIONS — no network call, no
+ *     credentials for either exist yet — so they keep the "simulated"
+ *     badge, the same honesty the grid's own MCP Action Preview card
+ *     already practices ("no changes made" until a human approves).
  */
-import { useEffect, useState } from "react";
-import { Database, Gauge, Info, Server } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronRight, Database, Gauge, Info, Server } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useSponsorEvents } from "@/hooks/use-sponsor-events";
 import type { SponsorEvent } from "@/lib/sponsor-event-bus";
@@ -20,6 +24,11 @@ const APP_START = Date.now();
 
 function formatClock(date: Date): string {
   return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+/** Time-only, no date — the ClickHouse table's Time column is a few dozen pixels wide, so the full timestamp (visible in the expanded payload) doesn't fit. */
+function formatTimeOnly(date: Date): string {
+  return date.toISOString().slice(11, 19);
 }
 
 function formatUptime(ms: number): string {
@@ -34,6 +43,17 @@ function SimulatedBadge() {
   return (
     <Badge className="border-caution/40 bg-caution-soft text-caution" title="Rendered entirely from local app state — no network call is made and no real credentials exist for this service.">
       <Info className="size-3" /> Simulated — nothing leaves this browser
+    </Badge>
+  );
+}
+
+function LiveBadge() {
+  return (
+    <Badge
+      className="border-good/40 bg-good-soft text-good"
+      title="Every event is also sent to app/api/sponsor-ingest, which writes it into a real ClickHouse Cloud table via the official mcp-clickhouse MCP server."
+    >
+      <CheckCircle2 className="size-3" /> Live — written to real ClickHouse Cloud
     </Badge>
   );
 }
@@ -76,33 +96,92 @@ function GrafanaTab({ events }: { events: SponsorEvent[] }) {
   );
 }
 
-/** Renders the live event stream as a ClickHouse-style query result — one JSON row per event. */
+/** The Kind column has only ~60px to work with — this project's two event kinds spelled out ("action_executed") wouldn't leave room for Summary, so the badge shows a short label while `e.kind` itself (unabbreviated) stays in the tooltip and the expanded payload. */
+function kindLabel(kind: SponsorEvent["kind"]): string {
+  return kind === "action_executed" ? "Action" : "Rule added";
+}
+
+/**
+ * Renders the live event stream as an actual ClickHouse-style query result
+ * table — Time / Kind / Source / Summary columns, newest first — instead of
+ * a raw JSON dump. Clicking a row expands it in place to show the full
+ * payload that real table row actually carries (the same object ClickHouse
+ * receives), so the tab reads as a query result you can drill into rather
+ * than a debug log.
+ */
 function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-col items-start gap-1.5">
-        <SimulatedBadge />
+        <LiveBadge />
         <p className="text-[11px] leading-4 text-ink-dim">
-          <span className="font-display text-ink">SELECT * FROM policy_events ORDER BY timestamp DESC LIMIT 50</span>
+          Rows below are the local mirror for instant UI — the same events are pushed in the background into a real table, queryable as{" "}
+          <span className="font-display text-ink">SELECT * FROM policy_events ORDER BY timestamp DESC LIMIT 50</span>. Click a row to inspect its full payload.
         </p>
       </div>
       <div className="max-h-[420px] overflow-y-auto rounded border border-line-bright bg-void-2">
         {events.length === 0 ? (
           <EmptyState label="event records" />
         ) : (
-          <div className="divide-y divide-line/70">
-            {events.map((e) => (
-              <div key={e.id} className="px-3 py-2">
-                <div className="mb-1 flex items-center gap-2 font-display text-[10px] uppercase tracking-wide text-ink-faint">
-                  <span>{formatClock(new Date(e.timestamp))}</span>
-                  <span className="rounded border border-line-bright bg-panel-2 px-1.5 py-0.5 text-signal">{e.kind}</span>
-                </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all font-display text-[10.5px] leading-5 text-ink-dim">
-                  {JSON.stringify({ id: e.id, timestamp: e.timestamp, kind: e.kind, source: e.source, ...e.payload }, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </div>
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-4" />
+              <col className="w-11" />
+              <col className="w-16" />
+              <col className="w-11" />
+              <col />
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">
+              <tr>
+                <th className="px-1.5 py-1.5" aria-hidden="true" />
+                <th className="truncate px-1.5 py-1.5">Time</th>
+                <th className="truncate px-1.5 py-1.5">Kind</th>
+                <th className="truncate px-1.5 py-1.5">Source</th>
+                <th className="truncate px-1.5 py-1.5">Summary</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/70">
+              {events.map((e) => {
+                const isOpen = expandedId === e.id;
+                return (
+                  <Fragment key={e.id}>
+                    <tr
+                      onClick={() => setExpandedId(isOpen ? null : e.id)}
+                      aria-expanded={isOpen}
+                      className={`cursor-pointer font-display text-[10.5px] transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
+                    >
+                      <td className="px-1.5 py-1.5 text-ink-faint">
+                        {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-faint" title={formatClock(new Date(e.timestamp))}>
+                        {formatTimeOnly(new Date(e.timestamp))}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5" title={e.kind}>
+                        <span className="rounded border border-line-bright bg-panel-2 px-1 py-0.5 text-signal">{kindLabel(e.kind)}</span>
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.source}>
+                        {e.source}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 text-ink" title={e.summary}>
+                        {e.summary}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={5} className="bg-void px-3 py-2">
+                          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-display text-[10.5px] leading-5 text-ink-dim">
+                            {JSON.stringify({ id: e.id, timestamp: e.timestamp, kind: e.kind, source: e.source, ...e.payload }, null, 2)}
+                          </pre>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
       <p className="text-[10px] text-ink-faint">{events.length.toLocaleString()} row{events.length === 1 ? "" : "s"}</p>
