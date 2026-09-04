@@ -82,12 +82,12 @@ export default function CinemaGridApp() {
     injectIncident,
   } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain, policyOptions, reportingOptions);
 
-  const [suggestions, setSuggestions] = useState<PolicySuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<PolicySuggestion<StreamRecord>[]>([]);
 
   function refreshSuggestions() {
     const outcome = callTool("suggest_policy_rules", {});
     chatRef.current?.logToolResult("suggest_policy_rules", {}, outcome);
-    if (outcome.ok) setSuggestions((outcome.result as { suggestions: PolicySuggestion[] }).suggestions);
+    if (outcome.ok) setSuggestions((outcome.result as { suggestions: PolicySuggestion<StreamRecord>[] }).suggestions);
   }
 
   function handleInjectIncident() {
@@ -100,7 +100,7 @@ export default function CinemaGridApp() {
     const outcome = callTool("add_suggested_policy_rule", args);
     chatRef.current?.logToolResult("add_suggested_policy_rule", args, outcome);
     if (outcome.ok) {
-      const result = outcome.result as { remainingSuggestions?: PolicySuggestion[] };
+      const result = outcome.result as { remainingSuggestions?: PolicySuggestion<StreamRecord>[] };
       if (result.remainingSuggestions) setSuggestions(result.remainingSuggestions);
     }
   }

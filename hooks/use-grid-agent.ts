@@ -76,7 +76,7 @@ export type PolicyOptions<TRecord, TActionId extends string> = {
   /** e.g. "🛎 Policy Rule #3 flagged 2 streams — review the action card to approve." */
   onEscalated?: (message: string) => void;
   /** Computes candidate rules from real current data, excluding ones already active. Omit to disable the suggestions feature entirely. */
-  listSuggestions?: (records: TRecord[], activeRules: PolicyRule<TRecord, TActionId>[]) => PolicySuggestion[];
+  listSuggestions?: (records: TRecord[], activeRules: PolicyRule<TRecord, TActionId>[]) => PolicySuggestion<TRecord>[];
   /** Turns a suggestion's key into the real (possibly compound-condition) PolicyRule to register — bypasses add_policy_rule's flat metric/operator/threshold schema. */
   resolveSuggestion?: (key: string) => PolicyRule<TRecord, TActionId> | { error: string };
 };

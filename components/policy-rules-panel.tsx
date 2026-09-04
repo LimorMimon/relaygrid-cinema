@@ -7,12 +7,28 @@
  * suggestions, which rule is pending — lives in the parent
  * (cinema-grid-app.tsx) and the hook; this component only renders it.
  */
-import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Send, Sparkles, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { GitBranch, Plus, RefreshCw, Send, Sparkles, Workflow, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { PolicyRule, PolicySuggestion } from "@/lib/grid-engine";
-import { cinemaDomain, type CinemaActionId, type StreamRecord } from "@/lib/domains/cinema";
+import { describeNodeLines, type PolicyRule, type PolicyRiskLevel, type PolicySuggestion, type QueryNode } from "@/lib/grid-engine";
+import { CINEMA_DECISION_LADDERS, cinemaDomain, type CinemaActionId, type StreamRecord } from "@/lib/domains/cinema";
+import { DecisionLadderModal, PolicyFlowchartModal } from "@/components/policy-flowchart";
+
+type FlowchartTarget = {
+  title: string;
+  description: string;
+  root: QueryNode<StreamRecord>;
+  actionLabel: string;
+  riskLevel: PolicyRiskLevel;
+};
+
+type LadderTarget = {
+  title: string;
+  description: string;
+  triggerLabel: string;
+  branches: { conditionLabel: string; actionLabel: string; riskLevel: PolicyRiskLevel }[];
+};
 
 function actionLabel(id: CinemaActionId): string {
   return cinemaDomain.actions.find((a) => a.id === id)?.label ?? id;
@@ -32,7 +48,7 @@ export function PolicyRulesPanel({
 }: {
   policyRules: PolicyRule<StreamRecord, CinemaActionId>[];
   onSend: (prompt: string) => void;
-  suggestions: PolicySuggestion[];
+  suggestions: PolicySuggestion<StreamRecord>[];
   onAddSuggestion: (key: string) => void;
   onRefreshSuggestions: () => void;
   /** The rule currently asking for approval via a live action card, if any — highlighted in the Active list. */
@@ -40,11 +56,42 @@ export function PolicyRulesPanel({
 }) {
   const [draft, setDraft] = useState("");
   const [subTab, setSubTab] = useState<"active" | "suggested">("active");
+  const [complexityTab, setComplexityTab] = useState<"simple" | "complex">("simple");
+  const [flowchart, setFlowchart] = useState<FlowchartTarget | null>(null);
+  const [ladderView, setLadderView] = useState<LadderTarget | null>(null);
 
   // Bring the highlighted rule into view the moment it starts asking for approval.
   useEffect(() => {
     if (pendingRuleId) setSubTab("active");
   }, [pendingRuleId]);
+
+  // Which decision ladder (if any) a given active rule belongs to — lets the
+  // flowchart button open the combined if/else diagram instead of a
+  // single-path one, and lets the list show "part of a branch" up front.
+  const ladderByRuleId = useMemo(() => {
+    const map = new Map<string, (typeof CINEMA_DECISION_LADDERS)[number]>();
+    for (const ladder of CINEMA_DECISION_LADDERS) {
+      for (const branch of ladder.branches) map.set(branch.ruleId, ladder);
+    }
+    return map;
+  }, []);
+
+  function openLadder(ladder: (typeof CINEMA_DECISION_LADDERS)[number]) {
+    const branches = ladder.branches.map((b) => {
+      const branchRule = policyRules.find((r) => r.id === b.ruleId);
+      return {
+        conditionLabel: b.conditionLabel,
+        actionLabel: branchRule ? actionLabel(branchRule.actionId) : "Not yet active",
+        riskLevel: branchRule?.riskLevel ?? ("AUTONOMOUS" as PolicyRiskLevel),
+      };
+    });
+    setLadderView({
+      title: ladder.title,
+      description: `A genuine if/else on ${ladder.triggerLabel} — each branch is mutually exclusive and triggers a different action.`,
+      triggerLabel: ladder.triggerLabel,
+      branches,
+    });
+  }
 
   function submit() {
     const text = draft.trim();
@@ -52,6 +99,17 @@ export function PolicyRulesPanel({
     onSend(`Add a standing policy rule: "${text}"`);
     setDraft("");
   }
+
+  // Demo-simulation grouping only — keeps the list short enough to skip
+  // scrolling. "Complex" = genuinely nested logic (more than 2 top-level
+  // branches) or part of an if/else decision ladder; everything else reads
+  // as "simple" even when it's a 2-condition AND.
+  const classifiedRules = policyRules.map((rule, i) => {
+    const logicLines = describeNodeLines(rule.root);
+    const ladder = ladderByRuleId.get(rule.id);
+    return { rule, index: i, logicLines, ladder, isComplex: logicLines.length > 2 || Boolean(ladder) };
+  });
+  const visibleRules = classifiedRules.filter((r) => (complexityTab === "complex" ? r.isComplex : !r.isComplex));
 
   return (
     <section className="shrink-0 overflow-hidden rounded border border-line bg-panel">
@@ -114,38 +172,109 @@ export function PolicyRulesPanel({
               <p className="mx-auto mt-1 max-w-[26ch] text-[11px] leading-4 text-ink-faint">Describe one above to get started.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-line">
-              {policyRules.map((rule, i) => {
-                const isPending = rule.id === pendingRuleId;
-                return (
-                  <li
-                    key={rule.id}
-                    className={
-                      isPending
-                        ? "border-l-2 border-caution bg-caution-soft/50 px-4 py-3"
-                        : "border-l-2 border-transparent px-4 py-3"
-                    }
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 text-xs font-medium leading-5 text-ink">
-                        <span className="mr-1.5 font-display font-bold text-ink-faint">#{i + 1}</span>
-                        {rule.description}
-                      </p>
-                      <Badge className={`shrink-0 ${riskBadgeClasses(rule.riskLevel)}`}>{rule.riskLevel === "AUTONOMOUS" ? "Auto" : "Approval"}</Badge>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pl-[1.4rem]">
-                      <p className="text-[11px] text-ink-faint">→ {actionLabel(rule.actionId)}</p>
-                      {isPending && (
-                        <span className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-wide text-caution">
-                          <span className="size-1.5 animate-pulse-dot-caution rounded-full bg-caution" />
-                          Awaiting your approval
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              <div className="flex gap-1.5 border-b border-line bg-void-2/40 px-4 py-2">
+                <button
+                  type="button"
+                  onClick={() => setComplexityTab("simple")}
+                  className={`rounded-full border px-2.5 py-1 font-display text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                    complexityTab === "simple"
+                      ? "border-signal/40 bg-signal-soft text-signal"
+                      : "border-line-bright bg-panel-2 text-ink-faint hover:text-ink-dim"
+                  }`}
+                >
+                  Simple ({classifiedRules.filter((r) => !r.isComplex).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComplexityTab("complex")}
+                  className={`flex items-center gap-1 rounded-full border px-2.5 py-1 font-display text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                    complexityTab === "complex"
+                      ? "border-auto/40 bg-auto-soft text-auto"
+                      : "border-line-bright bg-panel-2 text-ink-faint hover:text-ink-dim"
+                  }`}
+                >
+                  <GitBranch className="size-2.5" /> Complex ({classifiedRules.filter((r) => r.isComplex).length})
+                </button>
+              </div>
+              {visibleRules.length === 0 ? (
+                <p className="px-4 py-6 text-center text-[11px] leading-4 text-ink-faint">No {complexityTab} rules right now.</p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {visibleRules.map(({ rule, index: i, logicLines, ladder }) => {
+                    const isPending = rule.id === pendingRuleId;
+                    return (
+                      <li
+                        key={rule.id}
+                        className={
+                          isPending ? "border-l-2 border-caution bg-caution-soft/50 px-4 py-3" : "border-l-2 border-transparent px-4 py-3"
+                        }
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 text-xs font-medium leading-5 text-ink">
+                            <span className="mr-1.5 font-display font-bold text-ink-faint">#{i + 1}</span>
+                            {rule.description}
+                          </p>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              title={ladder ? `View combined if/else: ${ladder.title}` : "View as a flowchart"}
+                              onClick={() =>
+                                ladder
+                                  ? openLadder(ladder)
+                                  : setFlowchart({
+                                      title: `Policy Rule #${i + 1}`,
+                                      description: rule.description,
+                                      root: rule.root,
+                                      actionLabel: actionLabel(rule.actionId),
+                                      riskLevel: rule.riskLevel,
+                                    })
+                              }
+                              className={`rounded border p-1 ${
+                                ladder
+                                  ? "border-signal/40 bg-signal-soft text-signal hover:border-signal"
+                                  : "border-line-bright bg-panel-2 text-ink-faint hover:border-signal hover:text-signal"
+                              }`}
+                            >
+                              {ladder ? <GitBranch className="size-3" /> : <Workflow className="size-3" />}
+                            </button>
+                            <Badge className={riskBadgeClasses(rule.riskLevel)}>{rule.riskLevel === "AUTONOMOUS" ? "Auto" : "Approval"}</Badge>
+                          </div>
+                        </div>
+
+                        {ladder && (
+                          <p className="ml-[1.4rem] mt-1 flex items-center gap-1 font-display text-[9px] font-semibold uppercase tracking-wide text-signal">
+                            <GitBranch className="size-2.5" /> Branch of "{ladder.title}" — an if/else, not a standalone rule
+                          </p>
+                        )}
+
+                        {/* The actual condition tree — one line per top-level branch, so a
+                            genuinely nested rule visibly reads as multi-line logic, while a
+                            simple one-condition rule stays exactly one line. */}
+                        <div className="ml-[1.4rem] mt-1.5 space-y-0.5 rounded border border-line-bright/50 bg-void-2/60 px-2 py-1.5 font-display text-[10px] leading-4">
+                          {logicLines.map((line, li) => (
+                            <p key={li} className={li === 0 ? "text-ink-dim" : "pl-3 text-ink-faint"}>
+                              {li === 0 ? "IF " : ""}
+                              {line}
+                            </p>
+                          ))}
+                        </div>
+
+                        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pl-[1.4rem]">
+                          <p className="text-[11px] text-ink-faint">→ {actionLabel(rule.actionId)}</p>
+                          {isPending && (
+                            <span className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-wide text-caution">
+                              <span className="size-1.5 animate-pulse-dot-caution rounded-full bg-caution" />
+                              Awaiting your approval
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -170,7 +299,25 @@ export function PolicyRulesPanel({
                 <div key={s.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <p className="min-w-0 flex-1 text-xs font-medium leading-5 text-ink">{s.description}</p>
-                    <Badge className={`shrink-0 ${riskBadgeClasses(s.riskLevel)}`}>{s.riskLevel === "AUTONOMOUS" ? "Auto" : "Approval"}</Badge>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        title="View as a flowchart"
+                        onClick={() =>
+                          setFlowchart({
+                            title: s.description,
+                            description: s.rationale,
+                            root: s.root,
+                            actionLabel: s.actionLabel,
+                            riskLevel: s.riskLevel,
+                          })
+                        }
+                        className="rounded border border-line-bright bg-panel-2 p-1 text-ink-faint hover:border-signal hover:text-signal"
+                      >
+                        <Workflow className="size-3" />
+                      </button>
+                      <Badge className={riskBadgeClasses(s.riskLevel)}>{s.riskLevel === "AUTONOMOUS" ? "Auto" : "Approval"}</Badge>
+                    </div>
                   </div>
                   <p className="mt-1 text-[11px] leading-4 text-ink-faint">{s.rationale}</p>
                   <div className="mt-2 flex items-center justify-between gap-2">
@@ -186,6 +333,26 @@ export function PolicyRulesPanel({
             </div>
           )}
         </div>
+      )}
+
+      {flowchart && (
+        <PolicyFlowchartModal
+          title={flowchart.title}
+          description={flowchart.description}
+          root={flowchart.root}
+          actionLabel={flowchart.actionLabel}
+          riskLevel={flowchart.riskLevel}
+          onClose={() => setFlowchart(null)}
+        />
+      )}
+      {ladderView && (
+        <DecisionLadderModal
+          title={ladderView.title}
+          description={ladderView.description}
+          triggerLabel={ladderView.triggerLabel}
+          branches={ladderView.branches}
+          onClose={() => setLadderView(null)}
+        />
       )}
     </section>
   );

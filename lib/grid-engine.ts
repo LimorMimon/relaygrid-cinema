@@ -106,6 +106,21 @@ export function describeNode<TRecord>(node: QueryNode<TRecord>): string {
   return `(${node.children.map(describeNode).join(` ${node.operator} `)})`;
 }
 
+/**
+ * Like describeNode, but one line per top-level branch instead of a single
+ * flattened string — so a genuinely nested rule (multiple AND/OR/NOT
+ * branches) visibly reads as multi-line pseudo-code in the UI, while a
+ * simple one-condition rule stays exactly one line. Sub-branches within
+ * each line still use describeNode's compact parenthesized form.
+ */
+export function describeNodeLines<TRecord>(node: QueryNode<TRecord>): string[] {
+  if (node.kind === "not") return [`NOT (${describeNode(node.child)})`];
+  if (node.kind === "group" && node.children.length > 1) {
+    return node.children.map((child, i) => (i === 0 ? describeNode(child) : `${node.operator} ${describeNode(child)}`));
+  }
+  return [describeNode(node)];
+}
+
 export function explain<TRecord>(record: TRecord, node: QueryNode<TRecord>): string[] {
   if (node.kind === "condition") return matches(record, node) ? [describeNode(node)] : [];
   if (node.kind === "not") return matches(record, node) ? [`NOT (${describeNode(node.child)})`] : [];
@@ -232,13 +247,15 @@ export type PolicyRule<TRecord, TActionId extends string> = {
 };
 
 /** A candidate rule computed from real current data, not yet registered — the read-only half of the policy-suggestion flow. */
-export type PolicySuggestion = {
+export type PolicySuggestion<TRecord = unknown> = {
   key: string;
   description: string;
   rationale: string;
   actionLabel: string;
   riskLevel: PolicyRiskLevel;
   matchCount: number;
+  /** The real condition tree — exposed so the UI can render it (as text or a flowchart), not just the English description. */
+  root: QueryNode<TRecord>;
 };
 
 /** Pure evaluation: which records currently match each active policy rule. */

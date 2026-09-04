@@ -533,6 +533,120 @@ export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = 
     riskLevel: "AUTONOMOUS",
     createdAt: SEEDED_AT,
   },
+  // --- Compounding-Symptom Escalation (the genuinely nested one) --------
+  //
+  // Real broadcast-ops judgment call, not a flat single-condition trigger:
+  // a stream only moderately below the healthy 3.0 Mbps line isn't alone
+  // grounds for a disruptive live reroute — default rule #3 already leaves
+  // it alone above 2.0 Mbps. But moderate degradation *combined with* a
+  // second, independent symptom (audio OR subtitles also failing) usually
+  // means a shared root cause (origin/encoder trouble), not two unlucky
+  // coincidences — and that combination is worth a human's attention
+  // before it worsens. The NOT clause exists so a stream this same tick's
+  // AUTONOMOUS rules just healed doesn't immediately get re-flagged:
+  //
+  //   IF   1.5 <= bitrateMbps < 3.0                 (moderately degraded —
+  //                                                    not yet caught by #3)
+  //   AND  (audioStatus != "OK" OR subtitleSync != "In Sync")
+  //                                                  (a second, independent
+  //                                                    fault at the same time)
+  //   AND  NOT (status == "Auto-Resolved")          (don't re-flag something
+  //                                                    just self-healed)
+  //   THEN switch_failover_cdn, REQUIRES_APPROVAL   (always human-reviewed —
+  //                                                    a live reroute is
+  //                                                    never automatic)
+  {
+    id: "policy-default-compounding-symptom-escalation",
+    description: "Moderate bitrate degradation AND a second independent fault → escalate a full reroute for review",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        {
+          kind: "group",
+          operator: "AND",
+          children: [
+            { kind: "condition", field: "bitrateMbps", operator: "gte", value: 1.5 },
+            { kind: "condition", field: "bitrateMbps", operator: "lt", value: 3.0 },
+          ],
+        },
+        {
+          kind: "group",
+          operator: "OR",
+          children: [
+            { kind: "condition", field: "audioStatus", operator: "neq", value: "OK" },
+            { kind: "condition", field: "subtitleSync", operator: "neq", value: "In Sync" },
+          ],
+        },
+        { kind: "not", child: { kind: "condition", field: "status", operator: "eq", value: "Auto-Resolved" } },
+      ],
+    },
+    actionId: "switch_failover_cdn",
+    riskLevel: "REQUIRES_APPROVAL",
+    createdAt: SEEDED_AT,
+  },
+  // --- Audio Fault Response (a genuine if/else — two different actions) -
+  //
+  // Real judgment call: not every audio fault deserves the same fix.
+  // `audioStatus` can only ever hold one value at a time, so these two
+  // rules are strictly mutually exclusive — a true branch, not just two
+  // rules that happen to both fire:
+  //   IF   audioStatus == "Muted"          -> a routing/mute-toggle glitch,
+  //                                            safe and reversible to fix
+  //                                            by simply restarting the
+  //                                            encoder — AUTONOMOUS.
+  //   ELSE IF audioStatus == "Encoder Error" -> the encoder itself is
+  //                                            reporting a hard fault;
+  //                                            restarting the SAME failed
+  //                                            component twice rarely
+  //                                            helps, so escalate for a
+  //                                            full reroute instead —
+  //                                            REQUIRES_APPROVAL.
+  // See CINEMA_DECISION_LADDERS below — that's what lets the UI render
+  // these two rules together as one branching flowchart instead of two
+  // unrelated list entries.
+  {
+    id: "policy-default-audio-muted-response",
+    description: "Audio muted → auto-restart the audio encoder (the reversible fix)",
+    root: { kind: "condition", field: "audioStatus", operator: "eq", value: "Muted" },
+    actionId: "restart_audio_encoder",
+    riskLevel: "AUTONOMOUS",
+    createdAt: SEEDED_AT,
+  },
+  {
+    id: "policy-default-audio-encoder-error-response",
+    description: "Audio encoder reporting a hard fault → escalate a full reroute instead of retrying the same fix",
+    root: { kind: "condition", field: "audioStatus", operator: "eq", value: "Encoder Error" },
+    actionId: "switch_failover_cdn",
+    riskLevel: "REQUIRES_APPROVAL",
+    createdAt: SEEDED_AT,
+  },
+];
+
+/**
+ * Purely a presentation-layer grouping — the policy engine itself still
+ * evaluates each branch as its own independent PolicyRule (see above); this
+ * is what lets the UI recognize that two particular rules together form one
+ * if/else decision and render them as a single branching flowchart instead
+ * of two disconnected list entries.
+ */
+export type DecisionLadder = {
+  id: string;
+  title: string;
+  triggerLabel: string;
+  branches: { ruleId: string; conditionLabel: string }[];
+};
+
+export const CINEMA_DECISION_LADDERS: DecisionLadder[] = [
+  {
+    id: "audio-fault-response",
+    title: "Audio Fault Response",
+    triggerLabel: "audioStatus",
+    branches: [
+      { ruleId: "policy-default-audio-muted-response", conditionLabel: "= Muted" },
+      { ruleId: "policy-default-audio-encoder-error-response", conditionLabel: "= Encoder Error" },
+    ],
+  },
 ];
 
 // --- Suggested policy rules ---------------------------------------------
@@ -593,7 +707,7 @@ const POLICY_RULE_SUGGESTION_CATALOG: PolicyRuleSuggestionTemplate[] = [
 export function listPolicyRuleSuggestions(
   records: StreamRecord[],
   activeRules: PolicyRule<StreamRecord, CinemaActionId>[],
-): PolicySuggestion[] {
+): PolicySuggestion<StreamRecord>[] {
   const addedKeys = new Set(activeRules.map((r) => r.sourceKey).filter((k): k is string => Boolean(k)));
   return POLICY_RULE_SUGGESTION_CATALOG.filter((c) => !addedKeys.has(c.key))
     .map((c) => ({
@@ -603,6 +717,7 @@ export function listPolicyRuleSuggestions(
       actionLabel: cinemaDomain.actions.find((a) => a.id === c.actionId)?.label ?? c.actionId,
       riskLevel: clampRisk(c.riskLevel, c.actionId),
       matchCount: records.filter((r) => matches(r, c.root)).length,
+      root: c.root,
     }))
     .sort((a, b) => b.matchCount - a.matchCount);
 }
