@@ -7,7 +7,7 @@ import type { GeminiFunctionDeclaration } from "@/lib/mcp-tools";
 type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 
-type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error"; text: string };
+type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy"; text: string };
 
 const MAX_TURNS = 10;
 
@@ -25,6 +25,8 @@ function summarizeToolCall(name: string, args: Record<string, unknown> | undefin
       return `undo_last_action → ${r.undone ? "restored previous state" : "nothing to undo"}`;
     case "execute_action":
       return `execute_action → ${r.changed} changed, ${r.unchanged} unchanged`;
+    case "add_policy_rule":
+      return `add_policy_rule → ${r.description} (${r.riskLevel}${r.riskLevelAdjusted ? ", adjusted for safety" : ""})`;
     case "describe_grid":
       return "describe_grid → capabilities returned";
     default:
@@ -50,6 +52,8 @@ export type AgentChatPanelHandle = {
     args: Record<string, unknown> | undefined,
     outcome: { ok: true; result: unknown } | { ok: false; error: string },
   ) => void;
+  /** Logs a policy-engine narration line (autonomous execution or escalation) — not a tool call. */
+  logPolicyMessage: (text: string) => void;
 };
 
 export const AgentChatPanel = forwardRef<
@@ -91,6 +95,9 @@ export const AgentChatPanel = forwardRef<
     },
     logToolResult: (name, args, outcome) => {
       appendMessage({ kind: "tool", text: summarizeToolCall(name, args, outcome) });
+    },
+    logPolicyMessage: (text) => {
+      appendMessage({ kind: "policy", text });
     },
   }));
 
@@ -173,6 +180,10 @@ export const AgentChatPanel = forwardRef<
             ) : m.kind === "error" ? (
               <div className="max-w-[92%] rounded border border-alert/40 bg-alert-soft px-3 py-2 text-xs font-medium text-alert">
                 ⚠ {m.text}
+              </div>
+            ) : m.kind === "policy" ? (
+              <div className="max-w-[92%] whitespace-pre-wrap rounded border-l-2 border-auto bg-auto-soft px-3 py-2 text-sm leading-5 text-ink">
+                {m.text}
               </div>
             ) : (
               <div

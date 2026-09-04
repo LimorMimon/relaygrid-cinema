@@ -30,6 +30,12 @@
 
   --color-alert: #ff5c78;
   --color-alert-soft: #2c1620;
+
+  /* System-initiated (policy/automation) — deliberately a different hue
+     family from signal/caution/alert so an autonomous fix never reads as
+     a human-approved one at a glance. */
+  --color-auto: #9d8cff;
+  --color-auto-soft: #1d1a33;
 }
 
 html,
@@ -117,4 +123,12 @@ body {
 }
 .animate-pulse-dot-alert {
   animation: pulse-dot-alert 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot-auto {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(157, 140, 255, 0.55); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(157, 140, 255, 0); }
+}
+.animate-pulse-dot-auto {
+  animation: pulse-dot-auto 2s ease-in-out infinite;
 }

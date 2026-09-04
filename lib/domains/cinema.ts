@@ -1,10 +1,11 @@
-import type { Transition } from "@/lib/grid-engine";
+import type { Operator, PolicyRiskLevel, PolicyRule, Transition } from "@/lib/grid-engine";
+import type { AddPolicyRuleArgs } from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
 
 export type CDNProvider = "US-East" | "US-West" | "EU-West" | "EU-Central" | "APAC-East";
 export type AudioStatus = "OK" | "Muted" | "Desync" | "Encoder Error";
 export type SubtitleSync = "In Sync" | "Drifting" | "Out of Sync" | "Missing";
-export type StreamStatus = "Healthy" | "Degraded" | "Failing" | "Rerouted";
+export type StreamStatus = "Healthy" | "Degraded" | "Failing" | "Rerouted" | "Auto-Resolved";
 
 export type StreamRecord = {
   id: string;
@@ -27,6 +28,7 @@ export const STATUS_LABELS: Record<StreamStatus, string> = {
   Degraded: "Degraded",
   Failing: "Failing",
   Rerouted: "Healthy / Rerouted",
+  "Auto-Resolved": "Auto-Resolved",
 };
 
 const FAILOVER_MAP: Record<CDNProvider, CDNProvider> = {
@@ -116,12 +118,20 @@ export function generateStreams(count = 220): StreamRecord[] {
     id: "STREAM-CDN-804",
     channel: "ArenaLive — Championship Round",
     cdnProvider: "EU-West",
-    bitrateMbps: 1.8,
+    // 2.4, not the original 1.8 — kept below the 3.0 "healthy" threshold
+    // (still matches the guide's "bitrate below 3Mbps" filter and needs a
+    // failover) but at/above 2.0, so the default REQUIRES_APPROVAL CDN
+    // policy rule (below) doesn't immediately pop an action card for it
+    // before the guided demo even starts.
+    bitrateMbps: 2.4,
     fps: 24,
     audioStatus: "Desync",
-    subtitleSync: "Drifting",
+    // "Out of Sync", not "Drifting" — the default AUTONOMOUS subtitle policy
+    // (below) auto-fixes "Drifting" on sight, which would silently resolve
+    // this seeded incident before the guided demo ever gets to it.
+    subtitleSync: "Out of Sync",
     status: "Failing",
-    statusFlags: deriveFlags({ bitrateMbps: 1.8, audioStatus: "Desync", subtitleSync: "Drifting" }),
+    statusFlags: deriveFlags({ bitrateMbps: 2.4, audioStatus: "Desync", subtitleSync: "Out of Sync" }),
     lastUpdated: new Date(NOW - 2 * 3600000).toISOString(),
     failoverAvailable: true,
   };
@@ -203,6 +213,144 @@ export function planCinemaAction(record: StreamRecord, action: CinemaActionId): 
   };
 }
 
+// --- Policy engine glue -----------------------------------------------
+//
+// The `add_policy_rule` MCP tool hands Gemini's parsed natural-language
+// rule here as loose strings; this module is the only place that knows how
+// those map onto real StreamRecord fields and CinemaActionIds.
+
+const POLICY_METRIC_ALIASES: Record<string, keyof StreamRecord & string> = {
+  bitrate: "bitrateMbps",
+  bitrate_mbps: "bitrateMbps",
+  fps: "fps",
+  audio_status: "audioStatus",
+  subtitle_sync: "subtitleSync",
+  cdn_provider: "cdnProvider",
+  // No dedicated CDN-health field exists — the record's own derived
+  // `status` ("Degraded"/"Failing"/...) is what stands in for it.
+  cdn_status: "status",
+  status: "status",
+};
+
+const POLICY_METRIC_NUMERIC_FIELDS = new Set<keyof StreamRecord>(["bitrateMbps", "fps"]);
+
+const POLICY_OPERATOR_ALIASES: Record<string, Operator> = {
+  "<": "lt",
+  ">": "gt",
+  "==": "eq",
+  "=": "eq",
+  "!=": "neq",
+};
+
+/** Friendly action names Gemini (or a default rule) may ask for → real CinemaActionId. */
+export const POLICY_ACTION_ALIASES: Record<string, CinemaActionId> = {
+  resync_audio: "restart_audio_encoder",
+  restart_audio_encoder: "restart_audio_encoder",
+  restart_encoder: "restart_audio_encoder",
+  flush_subtitle_buffer: "resync_subtitles",
+  resync_subtitles: "resync_subtitles",
+  switch_cdn: "switch_failover_cdn",
+  switch_cdn_provider: "switch_failover_cdn",
+  switch_failover_cdn: "switch_failover_cdn",
+};
+
+/**
+ * Safety clamp: the model may *request* AUTONOMOUS for any action, but the
+ * system — not Gemini — has final say on which actions are ever allowed to
+ * run without a human clicking Approve & Execute. Rerouting a live CDN is
+ * capped at REQUIRES_APPROVAL no matter what the request says.
+ */
+export const POLICY_ACTION_MAX_RISK: Record<CinemaActionId, PolicyRiskLevel> = {
+  restart_audio_encoder: "AUTONOMOUS",
+  resync_subtitles: "AUTONOMOUS",
+  switch_failover_cdn: "REQUIRES_APPROVAL",
+};
+
+function clampRisk(requested: PolicyRiskLevel, actionId: CinemaActionId): PolicyRiskLevel {
+  return POLICY_ACTION_MAX_RISK[actionId] === "REQUIRES_APPROVAL" ? "REQUIRES_APPROVAL" : requested;
+}
+
+export function resolveCinemaPolicyRule(
+  input: AddPolicyRuleArgs,
+): PolicyRule<StreamRecord, CinemaActionId> | { error: string } {
+  const field = POLICY_METRIC_ALIASES[input.metric_key];
+  if (!field) {
+    return { error: `Unknown metric_key "${input.metric_key}". Supported: ${Object.keys(POLICY_METRIC_ALIASES).join(", ")}` };
+  }
+  const operator = POLICY_OPERATOR_ALIASES[input.operator];
+  if (!operator) {
+    return { error: `Unknown operator "${input.operator}". Supported: <, >, ==, !=` };
+  }
+  const actionId = POLICY_ACTION_ALIASES[input.target_action];
+  if (!actionId) {
+    return { error: `Unknown target_action "${input.target_action}". Supported: ${Object.keys(POLICY_ACTION_ALIASES).join(", ")}` };
+  }
+  const requestedRisk: PolicyRiskLevel = input.risk_level === "AUTONOMOUS" ? "AUTONOMOUS" : "REQUIRES_APPROVAL";
+  const riskLevel = clampRisk(requestedRisk, actionId);
+  const value = POLICY_METRIC_NUMERIC_FIELDS.has(field) ? Number(input.threshold_value) : String(input.threshold_value);
+
+  return {
+    id: `policy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    description:
+      input.condition_description?.trim() || `${input.metric_key} ${input.operator} ${input.threshold_value} → ${input.target_action}`,
+    root: { kind: "condition", field, operator, value },
+    actionId,
+    riskLevel,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+const SEEDED_AT = new Date(NOW).toISOString();
+
+/**
+ * The three pre-configured rules from the spec. Two notes on translating
+ * them to this data model: (1) Rule 1 says audio "Out of Sync" — our
+ * AudioStatus enum has no such value, so this uses "Desync", the audio
+ * value that actually means the same thing. (2) Rule 2 says subtitle_sync
+ * "Delayed" — SubtitleSync has no such value either; "Drifting" is the
+ * closest real one (accumulating timing delay).
+ */
+export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = [
+  {
+    id: "policy-default-audio-resync",
+    description: "Audio desync on an otherwise healthy stream → auto-restart the audio encoder",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        { kind: "condition", field: "audioStatus", operator: "eq", value: "Desync" },
+        { kind: "condition", field: "bitrateMbps", operator: "gte", value: 3.0 },
+      ],
+    },
+    actionId: "restart_audio_encoder",
+    riskLevel: "AUTONOMOUS",
+    createdAt: SEEDED_AT,
+  },
+  {
+    id: "policy-default-subtitle-flush",
+    description: "Subtitles drifting → auto-flush the subtitle buffer",
+    root: { kind: "condition", field: "subtitleSync", operator: "eq", value: "Drifting" },
+    actionId: "resync_subtitles",
+    riskLevel: "AUTONOMOUS",
+    createdAt: SEEDED_AT,
+  },
+  {
+    id: "policy-default-cdn-failover",
+    description: "Bitrate critically low or CDN degraded → switch CDN provider (human approval required)",
+    root: {
+      kind: "group",
+      operator: "OR",
+      children: [
+        { kind: "condition", field: "bitrateMbps", operator: "lt", value: 2.0 },
+        { kind: "condition", field: "status", operator: "eq", value: "Degraded" },
+      ],
+    },
+    actionId: "switch_failover_cdn",
+    riskLevel: "REQUIRES_APPROVAL",
+    createdAt: SEEDED_AT,
+  },
+];
+
 export const cinemaDomain: DomainConfig<StreamRecord, CinemaActionId> = {
   id: "media-streaming",
   name: "Media & Streaming",
@@ -216,7 +364,7 @@ export const cinemaDomain: DomainConfig<StreamRecord, CinemaActionId> = {
     { key: "fps", label: "FPS", type: "number" },
     { key: "audioStatus", label: "Audio Status", type: "enum", enumValues: ["OK", "Muted", "Desync", "Encoder Error"] },
     { key: "subtitleSync", label: "Subtitle Sync", type: "enum", enumValues: ["In Sync", "Drifting", "Out of Sync", "Missing"] },
-    { key: "status", label: "Status", type: "enum", enumValues: ["Healthy", "Degraded", "Failing", "Rerouted"] },
+    { key: "status", label: "Status", type: "enum", enumValues: ["Healthy", "Degraded", "Failing", "Rerouted", "Auto-Resolved"] },
     { key: "lastUpdated", label: "Last Updated", type: "date" },
   ],
   actions: [

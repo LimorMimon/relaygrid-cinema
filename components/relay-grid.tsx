@@ -8,18 +8,21 @@ const statusRowClasses: Record<StreamRecord["status"], string> = {
   Degraded: "bg-caution-soft/40 hover:bg-caution-soft/70",
   Failing: "bg-alert-soft/40 hover:bg-alert-soft/70",
   Rerouted: "bg-signal-soft/50 hover:bg-signal-soft/80",
+  "Auto-Resolved": "bg-auto-soft/50 hover:bg-auto-soft/80",
 };
 const statusBadgeClasses: Record<StreamRecord["status"], string> = {
   Healthy: "border-line-bright bg-panel-2 text-ink-dim",
   Degraded: "border-caution/40 bg-caution-soft text-caution",
   Failing: "border-alert/40 bg-alert-soft text-alert",
   Rerouted: "border-signal/40 bg-signal-soft text-signal",
+  "Auto-Resolved": "border-auto/40 bg-auto-soft text-auto",
 };
 const statusDotClasses: Record<StreamRecord["status"], string> = {
   Healthy: "bg-ink-faint",
   Degraded: "bg-caution",
   Failing: "animate-pulse-dot-alert bg-alert",
   Rerouted: "animate-pulse-dot bg-signal",
+  "Auto-Resolved": "animate-pulse-dot-auto bg-auto",
 };
 
 export function RelayGrid({

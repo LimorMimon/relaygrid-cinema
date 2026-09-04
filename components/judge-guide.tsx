@@ -18,7 +18,7 @@ export const GUIDE_STEPS: GuideStep[] = [
   {
     title: "2 · Verify the flagged stream",
     prompt: "Explain why STREAM-CDN-804 matched, and summarize its issues.",
-    expected: "Gemini calls explain_record; STREAM-CDN-804 is highlighted (1.8 Mbps on EU-West, audio desync, subtitles drifting).",
+    expected: "Gemini calls explain_record; STREAM-CDN-804 is highlighted (2.4 Mbps on EU-West, audio desync, subtitles out of sync).",
   },
   {
     title: "3 · Preview the remediation",

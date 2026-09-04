@@ -3,13 +3,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyActionPlan,
   buildActionPlan,
+  evaluatePolicyRules,
   explain,
   runQuery,
   validateQuery,
+  type PolicyRule,
   type QuerySpec,
   type Transition,
 } from "@/lib/grid-engine";
-import { buildGeminiFunctionDeclarations, buildToolSchemas, createToolDispatcher, type ToolHandlers } from "@/lib/mcp-tools";
+import {
+  buildGeminiFunctionDeclarations,
+  buildToolSchemas,
+  createToolDispatcher,
+  type AddPolicyRuleArgs,
+  type ToolHandlers,
+} from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
 
 export type PreviewState<TRecord, TActionId extends string> = {
@@ -28,8 +36,26 @@ export type AuditEntry<TRecord> = {
 
 export type AgentNotice = { request: string; message: string };
 
+/**
+ * Optional standing-policy support. `resolveRule` is the only domain-specific
+ * piece (it knows how to turn loose MCP tool args into a real PolicyRule);
+ * everything else here — evaluation, autonomous execution, escalation to a
+ * preview — is generic and lives in this hook.
+ */
+export type PolicyOptions<TRecord, TActionId extends string> = {
+  resolveRule: (input: AddPolicyRuleArgs) => PolicyRule<TRecord, TActionId> | { error: string };
+  defaultRules?: PolicyRule<TRecord, TActionId>[];
+  /** Called on each record an AUTONOMOUS action just changed, so the domain can decide what "auto-resolved" looks like for its own shape (e.g. set a transient status once every flag clears). Return the record unchanged if it doesn't apply. */
+  markAutoResolved?: (record: TRecord) => TRecord;
+  /** e.g. "⚡ Auto-executed: Restart Audio Encoder for STREAM-CDN-804 via Policy Rule #1." */
+  onAutoExecuted?: (message: string) => void;
+  /** e.g. "🛎 Policy Rule #3 flagged 2 streams — review the action card to approve." */
+  onEscalated?: (message: string) => void;
+};
+
 export function useGridAgent<TRecord extends { id: string }, TActionId extends string>(
   domain: DomainConfig<TRecord, TActionId>,
+  policyOptions?: PolicyOptions<TRecord, TActionId>,
 ) {
   const [initial] = useState<TRecord[]>(() => domain.generateRecords());
   const [records, setRecords] = useState<TRecord[]>(initial);
@@ -40,15 +66,16 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   const [selected, setSelected] = useState<TRecord | null>(null);
   const [agentNotice, setAgentNotice] = useState<AgentNotice | null>(null);
   const [webmcpReady, setWebmcpReady] = useState(false);
+  const [policyRules, setPolicyRules] = useState<PolicyRule<TRecord, TActionId>[]>(policyOptions?.defaultRules ?? []);
 
   const results = useMemo(() => (query ? runQuery(records, query) : records), [records, query]);
   const visibleBatch = useMemo(() => results.slice(0, domain.batchSize), [results, domain.batchSize]);
   const fieldNames = useMemo(() => new Set(domain.fields.map((f) => f.key)), [domain]);
 
-  const live = useRef({ records, query, results, preview, audit, domain });
+  const live = useRef({ records, query, results, preview, audit, domain, policyRules });
   useEffect(() => {
-    live.current = { records, query, results, preview, audit, domain };
-  }, [records, query, results, preview, audit, domain]);
+    live.current = { records, query, results, preview, audit, domain, policyRules };
+  }, [records, query, results, preview, audit, domain, policyRules]);
 
   const reject = useCallback((request: string, message: string): never => {
     setAgentNotice({ request, message });
@@ -178,8 +205,22 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         setAgentNotice(null);
         return { undone: true };
       },
+      add_policy_rule: (input) => {
+        if (!policyOptions) return reject(input.condition_description ?? "Add policy rule", "This grid does not support policy rules.");
+        const resolved = policyOptions.resolveRule(input);
+        if ("error" in resolved) return reject(input.condition_description ?? "Add policy rule", resolved.error);
+        setPolicyRules((rules) => [...rules, resolved]);
+        setAgentNotice(null);
+        return {
+          ruleId: resolved.id,
+          description: resolved.description,
+          riskLevel: resolved.riskLevel,
+          requestedRiskLevel: input.risk_level,
+          riskLevelAdjusted: resolved.riskLevel !== input.risk_level,
+        };
+      },
     }),
-    [fieldNames, reject],
+    [fieldNames, reject, policyOptions],
   );
 
   const toolSchemas = useMemo(() => buildToolSchemas(domain), [domain]);
@@ -203,6 +244,87 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     return () => controller.abort();
   }, [toolSchemas, dispatch]);
 
+  // Continuously evaluate standing policy rules against the live grid.
+  // AUTONOMOUS matches execute immediately, through the exact same
+  // buildActionPlan/applyActionPlan pipeline manual execution uses.
+  // REQUIRES_APPROVAL matches surface as a normal action-card preview —
+  // they never bypass the human clicking Approve & Execute.
+  useEffect(() => {
+    if (policyRules.length === 0) return;
+
+    const autonomousRules = policyRules.filter((r) => r.riskLevel === "AUTONOMOUS");
+    const approvalRules = policyRules.filter((r) => r.riskLevel === "REQUIRES_APPROVAL");
+
+    let working = records;
+    const auditEntries: AuditEntry<TRecord>[] = [];
+    const autoMessages: string[] = [];
+
+    for (const rule of autonomousRules) {
+      const ruleNumber = policyRules.indexOf(rule) + 1;
+      // Capped to one batch per tick, same as every other action path — any
+      // matches beyond that get picked up on the next tick once `records`
+      // changes again, rather than one rule mutating the whole grid at once.
+      const matched = evaluatePolicyRules(working, [rule])[0].matches.slice(0, domain.batchSize);
+      if (matched.length === 0) continue;
+      const plan = buildActionPlan(matched, [rule.actionId], domain.planAction);
+      const changed = plan.filter((steps) => steps.some((step) => step.allowed));
+      if (changed.length === 0) continue;
+
+      const before = working;
+      working = applyActionPlan(working, plan);
+      if (policyOptions?.markAutoResolved) {
+        const changedIds = new Set(changed.map((steps) => steps[0].recordId));
+        working = working.map((record) => (changedIds.has(record.id) ? policyOptions.markAutoResolved!(record) : record));
+      }
+
+      const actionLabel = domain.actions.find((a) => a.id === rule.actionId)?.label ?? String(rule.actionId);
+      auditEntries.push({
+        id: `audit-policy-${rule.id}-${Date.now()}`,
+        label: `${actionLabel} (policy #${ruleNumber}) · ${changed.length} changed · ${plan.length - changed.length} unchanged`,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        before,
+      });
+      autoMessages.push(
+        `⚡ Auto-executed: ${actionLabel} for ${changed.map((steps) => steps[0].recordId).join(", ")} via Policy Rule #${ruleNumber} (${rule.description}).`,
+      );
+    }
+
+    if (auditEntries.length > 0) {
+      setRecords(working);
+      setAudit((x) => [...auditEntries.reverse(), ...x]);
+      autoMessages.forEach((message) => policyOptions?.onAutoExecuted?.(message));
+    }
+
+    // Escalate at most one new match per tick, and never clobber a preview
+    // that's already pending review (chat-triggered or policy-triggered).
+    if (!live.current.preview) {
+      for (const rule of approvalRules) {
+        const ruleNumber = policyRules.indexOf(rule) + 1;
+        const matched = evaluatePolicyRules(working, [rule])[0].matches.slice(0, domain.batchSize);
+        if (matched.length === 0) continue;
+        const plan = buildActionPlan(matched, [rule.actionId], domain.planAction);
+        const changed = plan.filter((steps) => steps.some((step) => step.allowed));
+        if (changed.length === 0) continue;
+
+        const p: PreviewState<TRecord, TActionId> = {
+          id: `preview-policy-${rule.id}-${Date.now()}`,
+          actions: [rule.actionId],
+          requestSummary: `Policy Rule #${ruleNumber}: ${rule.description}`,
+          plan,
+        };
+        setPreview(p);
+        const actionLabel = domain.actions.find((a) => a.id === rule.actionId)?.label ?? String(rule.actionId);
+        policyOptions?.onEscalated?.(
+          `🛎 Policy Rule #${ruleNumber} flagged ${changed.length} stream(s) for "${actionLabel}" — review the action card to approve.`,
+        );
+        break;
+      }
+    }
+    // Re-runs whenever the grid or the active rule set changes; intentionally
+    // not re-run on preview/audit alone (read via the `live` ref instead).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, policyRules, domain, policyOptions]);
+
   // Used by the in-app Gemini chat panel: same dispatcher, error-safe.
   const callTool = useCallback(
     (name: string, args: unknown): { ok: true; result: unknown } | { ok: false; error: string } => {
@@ -225,7 +347,8 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     setAudit([]);
     setSelected(null);
     setAgentNotice(null);
-  }, [initial]);
+    setPolicyRules(policyOptions?.defaultRules ?? []);
+  }, [initial, policyOptions]);
 
   return {
     records,
@@ -239,6 +362,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     setSelected,
     agentNotice,
     webmcpReady,
+    policyRules,
     toolSchemas,
     geminiTools,
     callTool,

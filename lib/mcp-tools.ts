@@ -24,7 +24,8 @@ export type McpToolName =
   | "explain_record"
   | "preview_action"
   | "execute_action"
-  | "undo_last_action";
+  | "undo_last_action"
+  | "add_policy_rule";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -135,6 +136,29 @@ export function buildToolSchemas<TRecord extends { id: string }, TActionId exten
       name: "undo_last_action",
       description: "Undo the most recently executed batch action. Do not call when audit history is empty.",
     },
+    {
+      name: "add_policy_rule",
+      description:
+        `Register a standing policy rule from a natural-language instruction like "always resync audio when it ` +
+        `desyncs on a healthy stream" or "auto-fix subtitle drift". The rule is evaluated continuously against ` +
+        `every ${domain.recordLabel}. Set risk_level to AUTONOMOUS only for low-risk, easily-reversible fixes the ` +
+        `user clearly wants applied without asking each time; use REQUIRES_APPROVAL for anything riskier — note ` +
+        `the system may still force REQUIRES_APPROVAL for a given action regardless of what you request, as a ` +
+        `safety floor you cannot override. metric_key should be one of: ${fieldNames.join(", ")}. target_action ` +
+        `should be one of: ${actionIds.join(", ")}.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          condition_description: { type: "string", description: "Short human-readable summary of the rule." },
+          metric_key: { type: "string" },
+          operator: { type: "string", enum: ["<", ">", "==", "!="] },
+          threshold_value: { type: "string" },
+          risk_level: { type: "string", enum: ["AUTONOMOUS", "REQUIRES_APPROVAL"] },
+          target_action: { type: "string", enum: actionIds },
+        },
+        required: ["metric_key", "operator", "threshold_value", "risk_level", "target_action"],
+      },
+    },
   ];
 }
 
@@ -171,6 +195,15 @@ export function buildGeminiFunctionDeclarations(schemas: McpToolSchema[]): Gemin
   }));
 }
 
+export type AddPolicyRuleArgs = {
+  condition_description?: string;
+  metric_key: string;
+  operator: string;
+  threshold_value: string | number;
+  risk_level: string;
+  target_action: string;
+};
+
 export type ToolHandlers<TRecord extends { id: string }, TActionId extends string> = {
   describe_grid: (input: { userRequest?: string; requestStatus?: "clear" | "unclear" }) => unknown;
   apply_query: (input: { requestSummary?: string; root: QueryNode<TRecord>; sort?: SortSpec<TRecord>[] } & QuerySpec<TRecord>) => unknown;
@@ -178,6 +211,7 @@ export type ToolHandlers<TRecord extends { id: string }, TActionId extends strin
   preview_action: (input: { actions: TActionId[]; requestSummary: string }) => unknown;
   execute_action: (input: { previewId: string; humanConfirmed?: boolean }) => unknown;
   undo_last_action: () => unknown;
+  add_policy_rule: (input: AddPolicyRuleArgs) => unknown;
 };
 
 export function createToolDispatcher<TRecord extends { id: string }, TActionId extends string>(
@@ -198,6 +232,8 @@ export function createToolDispatcher<TRecord extends { id: string }, TActionId e
         return handlers.execute_action(args as never);
       case "undo_last_action":
         return handlers.undo_last_action();
+      case "add_policy_rule":
+        return handlers.add_policy_rule(args as never);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }

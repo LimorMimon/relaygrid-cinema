@@ -1,19 +1,41 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
-import { Activity, AlertTriangle, Clapperboard, Database, RotateCcw } from "lucide-react";
+import { Activity, AlertTriangle, Clapperboard, Database, RotateCcw, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RelayGrid } from "@/components/relay-grid";
 import { ActionCard } from "@/components/action-card";
 import { AgentChatPanel, type AgentChatPanelHandle } from "@/components/agent-chat-panel";
 import { JudgeGuide, GUIDE_STEPS } from "@/components/judge-guide";
-import { useGridAgent, type PreviewState } from "@/hooks/use-grid-agent";
-import { cinemaDomain, type StreamRecord, type CinemaActionId } from "@/lib/domains/cinema";
+import { useGridAgent, type PolicyOptions, type PreviewState } from "@/hooks/use-grid-agent";
+import {
+  cinemaDomain,
+  resolveCinemaPolicyRule,
+  DEFAULT_POLICY_RULES,
+  type StreamRecord,
+  type CinemaActionId,
+} from "@/lib/domains/cinema";
 import { buildSystemInstruction } from "@/lib/agent-prompt";
 
 const systemInstruction = buildSystemInstruction(cinemaDomain);
 
 export default function CinemaGridApp() {
+  const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
+  const [executing, setExecuting] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const chatRef = useRef<AgentChatPanelHandle>(null);
+
+  const policyOptions = useMemo<PolicyOptions<StreamRecord, CinemaActionId>>(
+    () => ({
+      resolveRule: resolveCinemaPolicyRule,
+      defaultRules: DEFAULT_POLICY_RULES,
+      markAutoResolved: (record) => (record.statusFlags.length === 0 ? { ...record, status: "Auto-Resolved" } : record),
+      onAutoExecuted: (message) => chatRef.current?.logPolicyMessage(message),
+      onEscalated: (message) => chatRef.current?.logPolicyMessage(message),
+    }),
+    [],
+  );
+
   const {
     records,
     results,
@@ -25,17 +47,18 @@ export default function CinemaGridApp() {
     setSelected,
     agentNotice,
     webmcpReady,
+    policyRules,
     geminiTools,
     callTool,
     resetSession,
     dismissPreview,
-  } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain);
+  } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain, policyOptions);
 
-  const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
-  const [executing, setExecuting] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(false);
-  const chatRef = useRef<AgentChatPanelHandle>(null);
-
+  // execute_action stays out of Gemini's toolset — only a human click on the
+  // action card may ever run it. add_policy_rule IS exposed: creating a rule
+  // isn't itself a mutation, and any AUTONOMOUS rule still passes through
+  // the system's own risk clamp (lib/domains/cinema.ts) before it can run
+  // without a human confirming anything.
   const chatTools = useMemo(() => geminiTools.filter((t) => t.name !== "execute_action"), [geminiTools]);
   const pendingIds = useMemo(() => new Set((preview?.plan ?? []).map((steps) => steps[0]?.recordId)), [preview]);
 
@@ -44,6 +67,7 @@ export default function CinemaGridApp() {
     { label: "Current matches", value: results.length.toLocaleString(), icon: Activity },
     { label: "Flagged in view", value: results.filter((r) => r.statusFlags.length > 0).length.toLocaleString(), icon: AlertTriangle },
     { label: "Actions executed", value: audit.length.toLocaleString(), icon: Clapperboard },
+    { label: "Active policies", value: policyRules.length.toLocaleString(), icon: Zap },
   ];
 
   const completedSteps = audit.length > 0 ? 4 : preview ? 3 : selected ? 2 : query ? 1 : 0;
@@ -123,7 +147,7 @@ export default function CinemaGridApp() {
               <RotateCcw className="size-3.5" /> Reset session
             </Button>
           </div>
-          <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {stats.map(({ label, value, icon: Icon }) => (
               <div key={label} className="rounded border border-line bg-panel p-4">
                 <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-ink-faint">

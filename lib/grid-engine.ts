@@ -13,6 +13,8 @@ export type Operator =
   | "neq"
   | "gte"
   | "lte"
+  | "gt"
+  | "lt"
   | "in"
   | "after"
   | "before"
@@ -53,6 +55,10 @@ function compareValues(actual: unknown, operator: Operator, expected: ConditionV
       return Number(actual) >= Number(expected);
     case "lte":
       return Number(actual) <= Number(expected);
+    case "gt":
+      return Number(actual) > Number(expected);
+    case "lt":
+      return Number(actual) < Number(expected);
     case "in":
       return Array.isArray(expected) && expected.includes(String(actual));
     case "contains":
@@ -114,6 +120,8 @@ export function validateQuery<TRecord>(
     "neq",
     "gte",
     "lte",
+    "gt",
+    "lt",
     "in",
     "after",
     "before",
@@ -202,4 +210,29 @@ export function applyActionPlan<TRecord extends { id: string }, TActionId extend
     }
   }
   return records.map((record) => (patches.has(record.id) ? { ...record, ...patches.get(record.id) } : record));
+}
+
+export type PolicyRiskLevel = "AUTONOMOUS" | "REQUIRES_APPROVAL";
+
+/**
+ * A standing rule: whenever `root` matches a record, `actionId` should run
+ * against it — either immediately (AUTONOMOUS) or only after a human
+ * approves a preview (REQUIRES_APPROVAL). Reuses the same QueryNode tree as
+ * apply_query, so compound AND/OR conditions work for free.
+ */
+export type PolicyRule<TRecord, TActionId extends string> = {
+  id: string;
+  description: string;
+  root: QueryNode<TRecord>;
+  actionId: TActionId;
+  riskLevel: PolicyRiskLevel;
+  createdAt: string;
+};
+
+/** Pure evaluation: which records currently match each active policy rule. */
+export function evaluatePolicyRules<TRecord extends { id: string }, TActionId extends string>(
+  records: TRecord[],
+  rules: PolicyRule<TRecord, TActionId>[],
+): Array<{ rule: PolicyRule<TRecord, TActionId>; matches: TRecord[] }> {
+  return rules.map((rule) => ({ rule, matches: records.filter((record) => matches(record, rule.root)) }));
 }
