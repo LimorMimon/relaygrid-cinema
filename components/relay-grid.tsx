@@ -73,8 +73,8 @@ export function RelayGrid({
   onSelect: (record: StreamRecord) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded border border-line bg-panel">
-      <div className="flex items-center justify-between border-b border-line bg-panel-2 px-4 py-2.5">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-line bg-panel">
+      <div className="shrink-0 flex items-center justify-between border-b border-line bg-panel-2 px-4 py-2.5">
         <span className="font-display text-xs font-semibold uppercase tracking-wide text-ink">
           {totalMatches === totalRecords
             ? `${totalRecords.toLocaleString()} streams`
@@ -85,9 +85,11 @@ export function RelayGrid({
           match
         </span>
       </div>
-      <div className="overflow-x-auto">
+      {/* The only scrolling surface — the count bar above stays put, and the
+          header row stays pinned (sticky) while the 220 rows scroll under it. */}
+      <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full min-w-[860px] border-collapse text-[13px]">
-          <thead className="border-b border-line bg-void-2 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          <thead className="sticky top-0 z-10 border-b border-line bg-void-2 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             <tr>
               {["Stream ID", "Channel / Program", "CDN Provider", "Bitrate (Mbps)", "FPS", "Audio Status", "Subtitle Sync", "Status Flags", ""].map(
                 (label) => (

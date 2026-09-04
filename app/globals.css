@@ -113,12 +113,20 @@ body {
     grid-template-areas:
       "grid guide"
       "grid chat";
+    /* guide/chat stack within one column here, so — unlike the single-row
+       desktop split — they need an explicit row split to share the
+       container's bounded height instead of each growing to its content
+       size and pushing the page taller. */
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 @media (min-width: 1024px) {
   .rg-layout {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(340px, 400px);
     grid-template-areas: "grid guide chat";
+    /* Back to a single row here — the tablet tier's two-row split above
+       must not carry over, or it'd split this row's height in two. */
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 .rg-area-grid { grid-area: grid; }

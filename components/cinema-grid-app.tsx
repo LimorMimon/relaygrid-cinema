@@ -192,56 +192,73 @@ export default function CinemaGridApp() {
         </div>
       </header>
 
-      <div className="rg-layout min-h-[calc(100vh-4rem)] w-full">
-        <section className="rg-area-grid min-w-0 overflow-x-hidden p-4 sm:p-6">
-          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[.2em] text-signal">Cinema operations</p>
-              <h2 className="font-display text-xl font-semibold tracking-tight text-ink">Stream worklist</h2>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleInjectIncident}
-                title="Demo tooling: mutates a random healthy stream to prove the policy engine reacts to genuinely new data, not just the seeded dataset."
-                className="border-dashed text-ink-dim hover:border-ink-dim hover:text-ink"
-              >
-                <Dices className="size-3.5" /> Inject Incident
-              </Button>
-              <Button size="sm" variant="outline" onClick={resetSession}>
-                <RotateCcw className="size-3.5" /> Reset session
-              </Button>
-            </div>
-          </div>
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {stats.map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded border border-line bg-panel p-4">
-                <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-                  <span>{label}</span>
-                  <Icon className="size-3.5 text-ink-faint" />
-                </div>
-                <p className="font-display text-2xl font-semibold tabular-nums text-ink">{value}</p>
+      <div className="rg-layout min-h-[calc(100vh-4rem)] w-full md:h-[calc(100vh-4rem)]">
+        <section className="rg-area-grid flex min-w-0 flex-col overflow-x-hidden p-4 sm:p-6 md:sticky md:top-0 md:h-[calc(100vh-4rem)]">
+          <div className="shrink-0">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[.2em] text-signal">Cinema operations</p>
+                <h2 className="font-display text-xl font-semibold tracking-tight text-ink">Stream worklist</h2>
               </div>
-            ))}
-          </div>
-          {agentNotice && (
-            <div className="mb-4 rounded border border-caution/40 bg-caution-soft px-3 py-2 text-xs font-medium text-caution">
-              <strong className="font-display font-bold uppercase tracking-wide">Request rejected</strong> — {agentNotice.message}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleInjectIncident}
+                  title="Demo tooling: mutates a random healthy stream to prove the policy engine reacts to genuinely new data, not just the seeded dataset."
+                  className="border-dashed text-ink-dim hover:border-ink-dim hover:text-ink"
+                >
+                  <Dices className="size-3.5" /> Inject Incident
+                </Button>
+                <Button size="sm" variant="outline" onClick={resetSession}>
+                  <RotateCcw className="size-3.5" /> Reset session
+                </Button>
+              </div>
             </div>
-          )}
-          <RelayGrid
-            visibleBatch={visibleBatch}
-            totalMatches={results.length}
-            totalRecords={records.length}
-            selectedId={selected?.id}
-            pendingIds={pendingIds}
-            recentlyChangedIds={recentlyChangedIds}
-            onSelect={setSelected}
-          />
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {stats.map(({ label, value, icon: Icon }) => (
+                <div key={label} className="rounded border border-line bg-panel p-4">
+                  <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                    <span>{label}</span>
+                    <Icon className="size-3.5 text-ink-faint" />
+                  </div>
+                  <p className="font-display text-2xl font-semibold tabular-nums text-ink">{value}</p>
+                </div>
+              ))}
+            </div>
+            {agentNotice && (
+              <div className="mb-4 rounded border border-caution/40 bg-caution-soft px-3 py-2 text-xs font-medium text-caution">
+                <strong className="font-display font-bold uppercase tracking-wide">Request rejected</strong> — {agentNotice.message}
+              </div>
+            )}
+          </div>
+          {/* The only part of this column that scrolls — title, stats, and the
+              banner above stay put (shrink-0) so they're always visible while
+              scrolling through 220 rows. min-h-0 is required for a flex child
+              to actually shrink and let its own overflow-y-auto take effect. */}
+          <div className="min-h-0 flex-1">
+            <RelayGrid
+              visibleBatch={visibleBatch}
+              totalMatches={results.length}
+              totalRecords={records.length}
+              selectedId={selected?.id}
+              pendingIds={pendingIds}
+              recentlyChangedIds={recentlyChangedIds}
+              onSelect={setSelected}
+            />
+          </div>
         </section>
 
-        <aside className="rg-area-guide flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto">
+        {/*
+          Height differs by tier on purpose: at tablet "guide" only occupies
+          one of two stacked rows within its column (see the 768px media
+          query in globals.css), so it must fill that cell (h-full,
+          min-h-0) rather than claim the whole viewport height; at desktop
+          it's the sole occupant of its own full-height column, so lg:
+          switches it to the same absolute calc(100vh-4rem) the grid and
+          chat columns use.
+        */}
+        <aside className="rg-area-guide flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:sticky md:top-0 md:h-full md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0 lg:h-[calc(100vh-4rem)]">
           <div className="flex shrink-0 gap-1 rounded border border-line bg-panel p-1">
             <button
               type="button"
@@ -315,7 +332,8 @@ export default function CinemaGridApp() {
           {preview && <ActionCard preview={preview} busy={executing} onApprove={handleApprove} onDismiss={dismissPreview} />}
         </aside>
 
-        <aside className="rg-area-chat flex min-w-0 max-w-full flex-col overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-[calc(100vh-4rem)]">
+        {/* Same reasoning as rg-area-guide above: h-full within its tablet grid row, absolute calc(100vh-4rem) once it owns a full desktop column. */}
+        <aside className="rg-area-chat flex min-w-0 max-w-full flex-col overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:sticky md:top-0 md:h-full md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0 lg:h-[calc(100vh-4rem)]">
           <AgentChatPanel
             ref={chatRef}
             geminiTools={chatTools}
