@@ -227,6 +227,18 @@ export type PolicyRule<TRecord, TActionId extends string> = {
   actionId: TActionId;
   riskLevel: PolicyRiskLevel;
   createdAt: string;
+  /** Set when this rule was registered from a catalog suggestion, so it can be excluded from future suggestion lists. */
+  sourceKey?: string;
+};
+
+/** A candidate rule computed from real current data, not yet registered — the read-only half of the policy-suggestion flow. */
+export type PolicySuggestion = {
+  key: string;
+  description: string;
+  rationale: string;
+  actionLabel: string;
+  riskLevel: PolicyRiskLevel;
+  matchCount: number;
 };
 
 /** Pure evaluation: which records currently match each active policy rule. */
@@ -235,4 +247,73 @@ export function evaluatePolicyRules<TRecord extends { id: string }, TActionId ex
   rules: PolicyRule<TRecord, TActionId>[],
 ): Array<{ rule: PolicyRule<TRecord, TActionId>; matches: TRecord[] }> {
   return rules.map((rule) => ({ rule, matches: records.filter((record) => matches(record, rule.root)) }));
+}
+
+// --- Audit trail ----------------------------------------------------------
+//
+// Lives here (not in the hook) because the reporting engine below needs to
+// read it from domain-layer code, which must stay React-free.
+
+export type AuditSource = "human" | "policy";
+
+export type AuditEntry<TRecord, TActionId extends string = string> = {
+  id: string;
+  label: string;
+  time: string;
+  /** Real epoch ms, distinct from `time` (a display-only localized string) — what time-windowed reports filter on. */
+  timestamp: number;
+  before: TRecord[];
+  changedRecordIds: string[];
+  actionIds: TActionId[];
+  source: AuditSource;
+  policyRuleId?: string;
+};
+
+// --- Reporting ----------------------------------------------------------
+
+export type ReportTimeWindow = "1h" | "24h" | "7d" | "all";
+
+/** A saved report configuration — re-runnable, independent of any one result. */
+export type ReportSpec = {
+  id: string;
+  title: string;
+  timeWindow: ReportTimeWindow;
+  /** Domain-resolved metric key, e.g. "bitrate" or "auto_remediation_count". */
+  metric: string;
+  /** Domain-resolved group-by key, e.g. "cdnProvider". */
+  groupBy: string;
+  createdAt: string;
+};
+
+export type ReportRow = { group: string; value: number };
+
+export type ReportResult = {
+  spec: ReportSpec;
+  rows: ReportRow[];
+  total: number;
+  generatedAt: string;
+};
+
+const REPORT_WINDOW_MS: Record<Exclude<ReportTimeWindow, "all">, number> = {
+  "1h": 3_600_000,
+  "24h": 24 * 3_600_000,
+  "7d": 7 * 24 * 3_600_000,
+};
+
+export function withinReportWindow(isoOrEpoch: string | number, window: ReportTimeWindow, now = Date.now()): boolean {
+  if (window === "all") return true;
+  const t = typeof isoOrEpoch === "number" ? isoOrEpoch : new Date(isoOrEpoch).getTime();
+  return now - t <= REPORT_WINDOW_MS[window];
+}
+
+/** Groups items by a string key and counts each group, largest first. */
+export function groupAndCount<T>(items: T[], groupKey: (item: T) => string): ReportRow[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = groupKey(item);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([group, value]) => ({ group, value }))
+    .sort((a, b) => b.value - a.value);
 }

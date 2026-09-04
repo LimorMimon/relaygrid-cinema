@@ -7,7 +7,7 @@ import type { GeminiFunctionDeclaration } from "@/lib/mcp-tools";
 type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 
-type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy"; text: string };
+type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy" | "sim"; text: string };
 
 const MAX_TURNS = 10;
 
@@ -27,6 +27,12 @@ function summarizeToolCall(name: string, args: Record<string, unknown> | undefin
       return `execute_action → ${r.changed} changed, ${r.unchanged} unchanged`;
     case "add_policy_rule":
       return `add_policy_rule → ${r.description} (${r.riskLevel}${r.riskLevelAdjusted ? ", adjusted for safety" : ""})`;
+    case "suggest_policy_rules":
+      return `suggest_policy_rules → ${(r.suggestions as unknown[] | undefined)?.length ?? 0} candidate(s)`;
+    case "add_suggested_policy_rule":
+      return `add_suggested_policy_rule → ${r.description} (${r.riskLevel})`;
+    case "generate_analytics_report":
+      return `generate_analytics_report → "${r.title}": ${r.total} matching${r.saved ? " (saved)" : ""}`;
     case "describe_grid":
       return "describe_grid → capabilities returned";
     default:
@@ -54,6 +60,8 @@ export type AgentChatPanelHandle = {
   ) => void;
   /** Logs a policy-engine narration line (autonomous execution or escalation) — not a tool call. */
   logPolicyMessage: (text: string) => void;
+  /** Logs a demo-tooling event (e.g. a manually-injected test incident) — not a real tool call or agent decision. */
+  logSimulatedEvent: (text: string) => void;
 };
 
 export const AgentChatPanel = forwardRef<
@@ -98,6 +106,9 @@ export const AgentChatPanel = forwardRef<
     },
     logPolicyMessage: (text) => {
       appendMessage({ kind: "policy", text });
+    },
+    logSimulatedEvent: (text) => {
+      appendMessage({ kind: "sim", text });
     },
   }));
 
@@ -183,6 +194,10 @@ export const AgentChatPanel = forwardRef<
               </div>
             ) : m.kind === "policy" ? (
               <div className="max-w-[92%] whitespace-pre-wrap rounded border-l-2 border-auto bg-auto-soft px-3 py-2 text-sm leading-5 text-ink">
+                {m.text}
+              </div>
+            ) : m.kind === "sim" ? (
+              <div className="max-w-[92%] rounded border border-dashed border-line-bright bg-panel-2/60 px-2.5 py-1.5 font-display text-[11px] italic text-ink-dim">
                 {m.text}
               </div>
             ) : (

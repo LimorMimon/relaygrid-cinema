@@ -1,20 +1,36 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
-import { Activity, AlertTriangle, Clapperboard, Database, RotateCcw, Zap } from "lucide-react";
+/**
+ * Top-level page for the Media & Streaming domain — the piece that plugs
+ * `cinemaDomain` (lib/domains/cinema.ts) into `useGridAgent` (the generic
+ * hook) and lays out the three-column control room: the stream grid on the
+ * left, a tabbed Guide/Reports/Policies column in the middle (plus whatever
+ * action card is currently pending review), and the Gemini chat panel on
+ * the right. Every domain gets its own file shaped like this one; nothing
+ * here is reusable across domains on purpose.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Activity, AlertTriangle, BarChart3, Clapperboard, Database, Dices, RotateCcw, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RelayGrid } from "@/components/relay-grid";
 import { ActionCard } from "@/components/action-card";
 import { AgentChatPanel, type AgentChatPanelHandle } from "@/components/agent-chat-panel";
 import { JudgeGuide, GUIDE_STEPS } from "@/components/judge-guide";
-import { useGridAgent, type PolicyOptions, type PreviewState } from "@/hooks/use-grid-agent";
+import { ReportsPanel } from "@/components/reports-panel";
+import { PolicyRulesPanel } from "@/components/policy-rules-panel";
+import { useGridAgent, type PolicyOptions, type PreviewState, type ReportingOptions } from "@/hooks/use-grid-agent";
 import {
   cinemaDomain,
   resolveCinemaPolicyRule,
+  resolveCinemaReport,
+  listPolicyRuleSuggestions,
+  resolveSuggestedPolicyRule,
+  injectRandomIncident,
   DEFAULT_POLICY_RULES,
   type StreamRecord,
   type CinemaActionId,
 } from "@/lib/domains/cinema";
+import type { PolicySuggestion } from "@/lib/grid-engine";
 import { buildSystemInstruction } from "@/lib/agent-prompt";
 
 const systemInstruction = buildSystemInstruction(cinemaDomain);
@@ -23,6 +39,7 @@ export default function CinemaGridApp() {
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [middleTab, setMiddleTab] = useState<"guide" | "reports" | "policies">("guide");
   const chatRef = useRef<AgentChatPanelHandle>(null);
 
   const policyOptions = useMemo<PolicyOptions<StreamRecord, CinemaActionId>>(
@@ -32,7 +49,14 @@ export default function CinemaGridApp() {
       markAutoResolved: (record) => (record.statusFlags.length === 0 ? { ...record, status: "Auto-Resolved" } : record),
       onAutoExecuted: (message) => chatRef.current?.logPolicyMessage(message),
       onEscalated: (message) => chatRef.current?.logPolicyMessage(message),
+      listSuggestions: listPolicyRuleSuggestions,
+      resolveSuggestion: resolveSuggestedPolicyRule,
     }),
+    [],
+  );
+
+  const reportingOptions = useMemo<ReportingOptions<StreamRecord, CinemaActionId>>(
+    () => ({ resolveReport: resolveCinemaReport }),
     [],
   );
 
@@ -48,11 +72,43 @@ export default function CinemaGridApp() {
     agentNotice,
     webmcpReady,
     policyRules,
+    reports,
+    savedReportSpecs,
+    recentlyChangedIds,
     geminiTools,
     callTool,
     resetSession,
     dismissPreview,
-  } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain, policyOptions);
+    injectIncident,
+  } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain, policyOptions, reportingOptions);
+
+  const [suggestions, setSuggestions] = useState<PolicySuggestion[]>([]);
+
+  function refreshSuggestions() {
+    const outcome = callTool("suggest_policy_rules", {});
+    chatRef.current?.logToolResult("suggest_policy_rules", {}, outcome);
+    if (outcome.ok) setSuggestions((outcome.result as { suggestions: PolicySuggestion[] }).suggestions);
+  }
+
+  function handleInjectIncident() {
+    const result = injectIncident(injectRandomIncident);
+    chatRef.current?.logSimulatedEvent("error" in result ? `🎲 ${result.error}` : `🎲 ${result.summary}`);
+  }
+
+  function addSuggestedRule(key: string) {
+    const args = { suggestion_key: key };
+    const outcome = callTool("add_suggested_policy_rule", args);
+    chatRef.current?.logToolResult("add_suggested_policy_rule", args, outcome);
+    if (outcome.ok) {
+      const result = outcome.result as { remainingSuggestions?: PolicySuggestion[] };
+      if (result.remainingSuggestions) setSuggestions(result.remainingSuggestions);
+    }
+  }
+
+  // Suggestions are deterministic and cheap (no Gemini call), so compute
+  // them once up front rather than waiting for the user to open the tab.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshSuggestions(); }, []);
 
   // execute_action stays out of Gemini's toolset — only a human click on the
   // action card may ever run it. add_policy_rule IS exposed: creating a rule
@@ -143,9 +199,20 @@ export default function CinemaGridApp() {
               <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[.2em] text-signal">Cinema operations</p>
               <h2 className="font-display text-xl font-semibold tracking-tight text-ink">Stream worklist</h2>
             </div>
-            <Button size="sm" variant="outline" onClick={resetSession}>
-              <RotateCcw className="size-3.5" /> Reset session
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleInjectIncident}
+                title="Demo tooling: mutates a random healthy stream to prove the policy engine reacts to genuinely new data, not just the seeded dataset."
+                className="border-dashed text-ink-dim hover:border-ink-dim hover:text-ink"
+              >
+                <Dices className="size-3.5" /> Inject Incident
+              </Button>
+              <Button size="sm" variant="outline" onClick={resetSession}>
+                <RotateCcw className="size-3.5" /> Reset session
+              </Button>
+            </div>
           </div>
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {stats.map(({ label, value, icon: Icon }) => (
@@ -169,22 +236,86 @@ export default function CinemaGridApp() {
             totalRecords={records.length}
             selectedId={selected?.id}
             pendingIds={pendingIds}
+            recentlyChangedIds={recentlyChangedIds}
             onSelect={setSelected}
           />
         </section>
 
-        <aside className="rg-area-guide flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
-          <JudgeGuide
-            completedSteps={completedSteps}
-            onSend={setInjectedPrompt}
-            onReset={resetSession}
-            onAutoRun={runFullScenario}
-            autoRunning={autoRunning}
-          />
+        <aside className="rg-area-guide flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto">
+          <div className="flex shrink-0 gap-1 rounded border border-line bg-panel p-1">
+            <button
+              type="button"
+              onClick={() => setMiddleTab("guide")}
+              className={`flex-1 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                middleTab === "guide" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              Guide
+            </button>
+            <button
+              type="button"
+              onClick={() => setMiddleTab("reports")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                middleTab === "reports" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              <BarChart3 className="size-3.5" />
+              Reports
+              {savedReportSpecs.length > 0 && (
+                <span
+                  className={`grid size-4 place-items-center rounded-full font-display text-[9px] font-bold ${
+                    middleTab === "reports" ? "bg-void/25 text-void" : "bg-signal-soft text-signal"
+                  }`}
+                >
+                  {savedReportSpecs.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMiddleTab("policies")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                middleTab === "policies" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              <Zap className="size-3.5" />
+              Policies
+              {policyRules.length > 0 && (
+                <span
+                  className={`grid size-4 place-items-center rounded-full font-display text-[9px] font-bold ${
+                    middleTab === "policies" ? "bg-void/25 text-void" : "bg-signal-soft text-signal"
+                  }`}
+                >
+                  {policyRules.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {middleTab === "guide" ? (
+            <JudgeGuide
+              completedSteps={completedSteps}
+              onSend={setInjectedPrompt}
+              onReset={resetSession}
+              onAutoRun={runFullScenario}
+              autoRunning={autoRunning}
+            />
+          ) : middleTab === "reports" ? (
+            <ReportsPanel reports={reports} savedReportSpecs={savedReportSpecs} />
+          ) : (
+            <PolicyRulesPanel
+              policyRules={policyRules}
+              onSend={setInjectedPrompt}
+              suggestions={suggestions}
+              onAddSuggestion={addSuggestedRule}
+              onRefreshSuggestions={refreshSuggestions}
+              pendingRuleId={preview?.triggeredByRuleId}
+            />
+          )}
           {preview && <ActionCard preview={preview} busy={executing} onApprove={handleApprove} onDismiss={dismissPreview} />}
         </aside>
 
-        <aside className="rg-area-chat flex min-w-0 max-w-full flex-col overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-screen">
+        <aside className="rg-area-chat flex min-w-0 max-w-full flex-col overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:border-l md:border-t-0 lg:sticky lg:top-0 lg:h-[calc(100vh-4rem)]">
           <AgentChatPanel
             ref={chatRef}
             geminiTools={chatTools}

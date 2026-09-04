@@ -5,10 +5,25 @@ import { STATUS_LABELS, type StreamRecord } from "@/lib/domains/cinema";
 
 const statusRowClasses: Record<StreamRecord["status"], string> = {
   Healthy: "hover:bg-panel-2",
-  Degraded: "bg-caution-soft/40 hover:bg-caution-soft/70",
-  Failing: "bg-alert-soft/40 hover:bg-alert-soft/70",
-  Rerouted: "bg-signal-soft/50 hover:bg-signal-soft/80",
-  "Auto-Resolved": "bg-auto-soft/50 hover:bg-auto-soft/80",
+  Degraded: "bg-caution-soft/70 hover:bg-caution-soft/90",
+  Failing: "bg-alert-soft/70 hover:bg-alert-soft/90",
+  Rerouted: "bg-signal-soft/70 hover:bg-signal-soft/90",
+  "Auto-Resolved": "bg-auto-soft/70 hover:bg-auto-soft/90",
+};
+/** Applied to the first `<td>` only — a left border on `<tr>` itself renders unreliably under border-collapse. */
+const statusAccentClasses: Record<StreamRecord["status"], string> = {
+  Healthy: "border-l-2 border-transparent",
+  Degraded: "border-l-2 border-caution",
+  Failing: "border-l-2 border-alert",
+  Rerouted: "border-l-2 border-signal",
+  "Auto-Resolved": "border-l-2 border-auto",
+};
+const statusIdTextClasses: Record<StreamRecord["status"], string> = {
+  Healthy: "text-signal",
+  Degraded: "text-caution",
+  Failing: "text-alert",
+  Rerouted: "text-signal",
+  "Auto-Resolved": "text-auto",
 };
 const statusBadgeClasses: Record<StreamRecord["status"], string> = {
   Healthy: "border-line-bright bg-panel-2 text-ink-dim",
@@ -31,6 +46,7 @@ export function RelayGrid({
   totalRecords,
   selectedId,
   pendingIds,
+  recentlyChangedIds,
   onSelect,
 }: {
   visibleBatch: StreamRecord[];
@@ -38,6 +54,8 @@ export function RelayGrid({
   totalRecords: number;
   selectedId?: string | null;
   pendingIds?: ReadonlySet<string>;
+  /** Records a human-approved or autonomous action just changed — flashed briefly so the change is unmissable. */
+  recentlyChangedIds?: ReadonlySet<string>;
   onSelect: (record: StreamRecord) => void;
 }) {
   return (
@@ -70,6 +88,8 @@ export function RelayGrid({
             {visibleBatch.map((r) => {
               const isSelected = r.id === selectedId;
               const isPending = pendingIds?.has(r.id);
+              const isFlashing = recentlyChangedIds?.has(r.id);
+              const flash = isFlashing ? " animate-cell-flash" : "";
               return (
                 <tr
                   key={r.id}
@@ -78,20 +98,22 @@ export function RelayGrid({
                     isSelected ? "outline outline-1 -outline-offset-1 outline-signal" : ""
                   }`}
                 >
-                  <td className="whitespace-nowrap px-3 py-2.5 font-display text-xs font-medium text-signal">{r.id}</td>
-                  <td className="px-3 py-2.5 text-ink">{r.channel}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-ink-dim">{r.cdnProvider}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums ${r.bitrateMbps < 3 ? "font-semibold text-alert" : "text-ink-dim"}`}>
+                  <td className={`whitespace-nowrap px-3 py-2.5 font-display text-xs font-medium ${statusIdTextClasses[r.status]} ${statusAccentClasses[r.status]}${flash}`}>
+                    {r.id}
+                  </td>
+                  <td className={`px-3 py-2.5 text-ink${flash}`}>{r.channel}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 text-ink-dim${flash}`}>{r.cdnProvider}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums ${r.bitrateMbps < 3 ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
                     {r.bitrateMbps.toFixed(1)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 font-display tabular-nums text-ink-dim">{r.fps}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.audioStatus !== "OK" ? "font-semibold text-alert" : "text-ink-dim"}`}>
+                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums text-ink-dim${flash}`}>{r.fps}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.audioStatus !== "OK" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
                     {r.audioStatus}
                   </td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.subtitleSync !== "In Sync" ? "font-semibold text-alert" : "text-ink-dim"}`}>
+                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.subtitleSync !== "In Sync" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
                     {r.subtitleSync}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className={`px-3 py-2.5${flash}`}>
                     <div className="flex min-w-28 flex-wrap items-center gap-1.5">
                       <Badge className={statusBadgeClasses[r.status]}>
                         <span className={`size-1.5 rounded-full ${statusDotClasses[r.status]}`} />
@@ -100,7 +122,7 @@ export function RelayGrid({
                       {isPending && <Badge className="border-line-bright bg-panel-2 text-ink-dim">Pending</Badge>}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className={`px-3 py-2.5${flash}`}>
                     <ChevronRight className="size-4 text-ink-faint" />
                   </td>
                 </tr>

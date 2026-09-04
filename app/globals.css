@@ -132,3 +132,27 @@ body {
 .animate-pulse-dot-auto {
   animation: pulse-dot-auto 2s ease-in-out infinite;
 }
+
+@keyframes pulse-dot-caution {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(240, 168, 60, 0.55); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(240, 168, 60, 0); }
+}
+.animate-pulse-dot-caution {
+  animation: pulse-dot-caution 1.4s ease-in-out infinite;
+}
+
+/*
+  "Just acted on" row flash — distinct from permanent status color and from
+  the selection outline. box-shadow/outline don't reliably paint on <tr> in
+  table layouts, so this is applied per-<td>: a neutral bright wash that
+  paints over the row's status background within each cell, then decays to
+  transparent, revealing the status color underneath. One-shot, not looping.
+*/
+@keyframes cell-flash {
+  0% { background-color: rgba(240, 240, 245, 0.4); }
+  55% { background-color: rgba(240, 240, 245, 0.4); }
+  100% { background-color: rgba(240, 240, 245, 0); }
+}
+.animate-cell-flash {
+  animation: cell-flash 4.5s ease-out forwards;
+}

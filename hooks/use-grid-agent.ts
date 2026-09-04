@@ -1,4 +1,25 @@
 "use client";
+/**
+ * The React state layer that turns a `DomainConfig` (see lib/domains/*) into
+ * a live, agent-controllable grid. This file is domain-agnostic — it never
+ * mentions streams, patients, or any other domain shape directly. It wires
+ * together, in order:
+ *   1. Core grid state (records/query/results/preview/audit) and the six
+ *      base MCP tool handlers (describe/apply_query/explain/preview/
+ *      execute/undo), built on lib/grid-engine.ts's pure functions.
+ *   2. An optional policy-rule engine (`PolicyOptions`) — a useEffect that
+ *      continuously evaluates standing rules, auto-executing AUTONOMOUS
+ *      matches and raising REQUIRES_APPROVAL matches as a normal preview
+ *      the human must click through. The domain supplies rule resolution;
+ *      this file supplies the evaluation loop and safety semantics.
+ *   3. An optional reporting engine (`ReportingOptions`) — read-only
+ *      aggregation over records + the audit trail.
+ *   4. A demo-only `injectIncident` escape hatch (see lib/domains/cinema.ts's
+ *      injectRandomIncident) for proving the policy loop above reacts to
+ *      genuinely new data, not just what was seeded at load.
+ * Everything is exposed as native WebMCP tools (document.modelContext) and
+ * as a `callTool`/`geminiTools` pair the in-app Gemini chat panel drives.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyActionPlan,
@@ -7,8 +28,12 @@ import {
   explain,
   runQuery,
   validateQuery,
+  type AuditEntry,
   type PolicyRule,
+  type PolicySuggestion,
   type QuerySpec,
+  type ReportResult,
+  type ReportSpec,
   type Transition,
 } from "@/lib/grid-engine";
 import {
@@ -16,6 +41,8 @@ import {
   buildToolSchemas,
   createToolDispatcher,
   type AddPolicyRuleArgs,
+  type AddSuggestedPolicyRuleArgs,
+  type GenerateReportArgs,
   type ToolHandlers,
 } from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
@@ -25,14 +52,11 @@ export type PreviewState<TRecord, TActionId extends string> = {
   actions: TActionId[];
   requestSummary: string;
   plan: Transition<TRecord, TActionId>[][];
+  /** Set only when this preview was raised by a REQUIRES_APPROVAL policy rule, so the UI can highlight which rule is asking for approval. */
+  triggeredByRuleId?: string;
 };
 
-export type AuditEntry<TRecord> = {
-  id: string;
-  label: string;
-  time: string;
-  before: TRecord[];
-};
+export type { AuditEntry };
 
 export type AgentNotice = { request: string; message: string };
 
@@ -51,22 +75,52 @@ export type PolicyOptions<TRecord, TActionId extends string> = {
   onAutoExecuted?: (message: string) => void;
   /** e.g. "🛎 Policy Rule #3 flagged 2 streams — review the action card to approve." */
   onEscalated?: (message: string) => void;
+  /** Computes candidate rules from real current data, excluding ones already active. Omit to disable the suggestions feature entirely. */
+  listSuggestions?: (records: TRecord[], activeRules: PolicyRule<TRecord, TActionId>[]) => PolicySuggestion[];
+  /** Turns a suggestion's key into the real (possibly compound-condition) PolicyRule to register — bypasses add_policy_rule's flat metric/operator/threshold schema. */
+  resolveSuggestion?: (key: string) => PolicyRule<TRecord, TActionId> | { error: string };
+};
+
+/**
+ * Optional standing-report support. `resolveReport` is the only
+ * domain-specific piece (it knows how to turn loose MCP tool args into a
+ * real ReportResult over this domain's records/audit trail).
+ */
+export type ReportingOptions<TRecord, TActionId extends string> = {
+  resolveReport: (
+    records: TRecord[],
+    audit: AuditEntry<TRecord, TActionId>[],
+    input: GenerateReportArgs,
+  ) => ReportResult | { error: string };
 };
 
 export function useGridAgent<TRecord extends { id: string }, TActionId extends string>(
   domain: DomainConfig<TRecord, TActionId>,
   policyOptions?: PolicyOptions<TRecord, TActionId>,
+  reportingOptions?: ReportingOptions<TRecord, TActionId>,
 ) {
   const [initial] = useState<TRecord[]>(() => domain.generateRecords());
   const [records, setRecords] = useState<TRecord[]>(initial);
   const [query, setQuery] = useState<QuerySpec<TRecord> | null>(null);
   const [queryHistory, setQueryHistory] = useState<QuerySpec<TRecord>[]>([]);
   const [preview, setPreview] = useState<PreviewState<TRecord, TActionId> | null>(null);
-  const [audit, setAudit] = useState<AuditEntry<TRecord>[]>([]);
+  const [audit, setAudit] = useState<AuditEntry<TRecord, TActionId>[]>([]);
   const [selected, setSelected] = useState<TRecord | null>(null);
   const [agentNotice, setAgentNotice] = useState<AgentNotice | null>(null);
   const [webmcpReady, setWebmcpReady] = useState(false);
   const [policyRules, setPolicyRules] = useState<PolicyRule<TRecord, TActionId>[]>(policyOptions?.defaultRules ?? []);
+  const [reports, setReports] = useState<ReportResult[]>([]);
+  const [savedReportSpecs, setSavedReportSpecs] = useState<ReportSpec[]>([]);
+  // Whichever record ids a human-approved execution or an autonomous policy
+  // rule *just* changed — a transient "look here" signal for the grid UI,
+  // separate from the permanent per-record status. Self-clears below.
+  const [recentlyChangedIds, setRecentlyChangedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (recentlyChangedIds.size === 0) return;
+    const timer = setTimeout(() => setRecentlyChangedIds(new Set()), 4500);
+    return () => clearTimeout(timer);
+  }, [recentlyChangedIds]);
 
   const results = useMemo(() => (query ? runQuery(records, query) : records), [records, query]);
   const visibleBatch = useMemo(() => results.slice(0, domain.batchSize), [results, domain.batchSize]);
@@ -174,7 +228,9 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         const before = s.records;
         const nextRecords = applyActionPlan(s.records, s.preview.plan);
         setRecords(nextRecords);
-        const changed = s.preview.plan.filter((steps) => steps.some((step) => step.allowed)).length;
+        const changedSteps = s.preview.plan.filter((steps) => steps.some((step) => step.allowed));
+        const changed = changedSteps.length;
+        const changedIds = changedSteps.map((steps) => steps[0].recordId);
         const actionLabels = s.preview.actions
           .map((id) => s.domain.actions.find((a) => a.id === id)?.label ?? id)
           .join(" + ");
@@ -183,10 +239,15 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
             id: `audit-${Date.now()}`,
             label: `${actionLabels} · ${changed} changed · ${s.preview!.plan.length - changed} unchanged`,
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            timestamp: Date.now(),
             before,
+            changedRecordIds: changedIds,
+            actionIds: s.preview!.actions,
+            source: "human",
           },
           ...x,
         ]);
+        setRecentlyChangedIds(new Set(changedIds));
         setPreview(null);
         setAgentNotice(null);
         return {
@@ -219,8 +280,44 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           riskLevelAdjusted: resolved.riskLevel !== input.risk_level,
         };
       },
+      suggest_policy_rules: () => {
+        if (!policyOptions?.listSuggestions) return reject("Suggest policy rules", "This grid does not support rule suggestions.");
+        const s = live.current;
+        const suggestions = policyOptions.listSuggestions(s.records, s.policyRules);
+        setAgentNotice(null);
+        return { suggestions };
+      },
+      add_suggested_policy_rule: (input) => {
+        if (!policyOptions?.resolveSuggestion) return reject(input.suggestion_key, "This grid does not support rule suggestions.");
+        const resolved = policyOptions.resolveSuggestion(input.suggestion_key);
+        if ("error" in resolved) return reject(input.suggestion_key, resolved.error);
+        const s = live.current;
+        const nextRules = [...s.policyRules, resolved];
+        setPolicyRules(nextRules);
+        setAgentNotice(null);
+        // Computed here (not via a separate suggest_policy_rules call) so the caller
+        // gets the post-add list without racing React's async state commit.
+        const remainingSuggestions = policyOptions.listSuggestions?.(s.records, nextRules) ?? [];
+        return { ruleId: resolved.id, description: resolved.description, riskLevel: resolved.riskLevel, remainingSuggestions };
+      },
+      generate_analytics_report: (input) => {
+        if (!reportingOptions) return reject(input.report_title ?? "Generate analytics report", "This grid does not support analytics reports.");
+        const s = live.current;
+        const result = reportingOptions.resolveReport(s.records, s.audit, input);
+        if ("error" in result) return reject(input.report_title ?? "Generate analytics report", result.error);
+        setReports((r) => [result, ...r].slice(0, 20));
+        if (input.save_report) setSavedReportSpecs((specs) => [result.spec, ...specs]);
+        setAgentNotice(null);
+        return {
+          reportId: result.spec.id,
+          title: result.spec.title,
+          rows: result.rows,
+          total: result.total,
+          saved: input.save_report,
+        };
+      },
     }),
-    [fieldNames, reject, policyOptions],
+    [fieldNames, reject, policyOptions, reportingOptions],
   );
 
   const toolSchemas = useMemo(() => buildToolSchemas(domain), [domain]);
@@ -256,7 +353,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     const approvalRules = policyRules.filter((r) => r.riskLevel === "REQUIRES_APPROVAL");
 
     let working = records;
-    const auditEntries: AuditEntry<TRecord>[] = [];
+    const auditEntries: AuditEntry<TRecord, TActionId>[] = [];
     const autoMessages: string[] = [];
 
     for (const rule of autonomousRules) {
@@ -282,7 +379,12 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         id: `audit-policy-${rule.id}-${Date.now()}`,
         label: `${actionLabel} (policy #${ruleNumber}) · ${changed.length} changed · ${plan.length - changed.length} unchanged`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: Date.now(),
         before,
+        changedRecordIds: changed.map((steps) => steps[0].recordId),
+        actionIds: [rule.actionId],
+        source: "policy",
+        policyRuleId: rule.id,
       });
       autoMessages.push(
         `⚡ Auto-executed: ${actionLabel} for ${changed.map((steps) => steps[0].recordId).join(", ")} via Policy Rule #${ruleNumber} (${rule.description}).`,
@@ -292,6 +394,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     if (auditEntries.length > 0) {
       setRecords(working);
       setAudit((x) => [...auditEntries.reverse(), ...x]);
+      setRecentlyChangedIds(new Set(auditEntries.flatMap((entry) => entry.changedRecordIds)));
       autoMessages.forEach((message) => policyOptions?.onAutoExecuted?.(message));
     }
 
@@ -311,6 +414,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           actions: [rule.actionId],
           requestSummary: `Policy Rule #${ruleNumber}: ${rule.description}`,
           plan,
+          triggeredByRuleId: rule.id,
         };
         setPreview(p);
         const actionLabel = domain.actions.find((a) => a.id === rule.actionId)?.label ?? String(rule.actionId);
@@ -339,6 +443,26 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
 
   const dismissPreview = useCallback(() => setPreview(null), []);
 
+  /**
+   * Demo-tooling escape hatch — deliberately NOT an MCP tool. Applies a
+   * domain-supplied mutator (e.g. injectRandomIncident) to the live records,
+   * so a human can prove the policy effect above reacts to genuinely new
+   * data rather than just the seeded dataset. Errors are non-fatal (e.g. no
+   * eligible record right now) and simply aren't applied.
+   */
+  const injectIncident = useCallback(
+    (mutate: (records: TRecord[]) => { records: TRecord[]; summary: string; changedId: string } | { error: string }) => {
+      const result = mutate(live.current.records);
+      if (!("error" in result)) {
+        setRecords(result.records);
+        setRecentlyChangedIds(new Set([result.changedId]));
+        setAgentNotice(null);
+      }
+      return result;
+    },
+    [],
+  );
+
   const resetSession = useCallback(() => {
     setRecords(initial);
     setQuery(null);
@@ -348,6 +472,9 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     setSelected(null);
     setAgentNotice(null);
     setPolicyRules(policyOptions?.defaultRules ?? []);
+    setReports([]);
+    setSavedReportSpecs([]);
+    setRecentlyChangedIds(new Set());
   }, [initial, policyOptions]);
 
   return {
@@ -363,10 +490,14 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     agentNotice,
     webmcpReady,
     policyRules,
+    reports,
+    savedReportSpecs,
+    recentlyChangedIds,
     toolSchemas,
     geminiTools,
     callTool,
     resetSession,
     dismissPreview,
+    injectIncident,
   };
 }

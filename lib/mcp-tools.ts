@@ -25,7 +25,10 @@ export type McpToolName =
   | "preview_action"
   | "execute_action"
   | "undo_last_action"
-  | "add_policy_rule";
+  | "add_policy_rule"
+  | "suggest_policy_rules"
+  | "add_suggested_policy_rule"
+  | "generate_analytics_report";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -159,6 +162,48 @@ export function buildToolSchemas<TRecord extends { id: string }, TActionId exten
         required: ["metric_key", "operator", "threshold_value", "risk_level", "target_action"],
       },
     },
+    {
+      name: "suggest_policy_rules",
+      description:
+        `Propose a short list of candidate standing policy rules this ${domain.name} grid does not already have, computed ` +
+        `from real current data (never invented) — each includes a live count of how many ${domain.recordLabel}s it would ` +
+        `affect right now. This only reads and proposes — it never creates or changes anything, so call it freely, e.g. ` +
+        `when the user asks what rules to add or wants automation ideas.`,
+    },
+    {
+      name: "add_suggested_policy_rule",
+      description:
+        "Register one of the candidates previously returned by suggest_policy_rules as a real, active policy rule, using " +
+        "its suggestion_key. Always call suggest_policy_rules first to get a valid key — never guess one.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          suggestion_key: { type: "string" },
+        },
+        required: ["suggestion_key"],
+      },
+    },
+    {
+      name: "generate_analytics_report",
+      description:
+        `Build an aggregate report over ${domain.recordLabel} data from a natural-language request like "show me ` +
+        `audio issues by CDN provider over the last 24 hours". This only reads and summarizes data — it never ` +
+        `changes anything, so you may call it freely. Set save_report=true when the user implies they want to ` +
+        `keep or revisit this report (e.g. "save this", "track this going forward"); otherwise leave it false for ` +
+        `a one-off answer. filter_metric should be one of: ${fieldNames.join(", ")}, auto_remediation_count. ` +
+        `group_by should be one of: ${fieldNames.join(", ")}.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          report_title: { type: "string" },
+          time_window: { type: "string", enum: ["1h", "24h", "7d", "all"] },
+          filter_metric: { type: "string" },
+          group_by: { type: "string" },
+          save_report: { type: "boolean" },
+        },
+        required: ["report_title", "time_window", "filter_metric", "group_by", "save_report"],
+      },
+    },
   ];
 }
 
@@ -204,6 +249,18 @@ export type AddPolicyRuleArgs = {
   target_action: string;
 };
 
+export type AddSuggestedPolicyRuleArgs = {
+  suggestion_key: string;
+};
+
+export type GenerateReportArgs = {
+  report_title: string;
+  time_window: string;
+  filter_metric: string;
+  group_by: string;
+  save_report: boolean;
+};
+
 export type ToolHandlers<TRecord extends { id: string }, TActionId extends string> = {
   describe_grid: (input: { userRequest?: string; requestStatus?: "clear" | "unclear" }) => unknown;
   apply_query: (input: { requestSummary?: string; root: QueryNode<TRecord>; sort?: SortSpec<TRecord>[] } & QuerySpec<TRecord>) => unknown;
@@ -212,6 +269,9 @@ export type ToolHandlers<TRecord extends { id: string }, TActionId extends strin
   execute_action: (input: { previewId: string; humanConfirmed?: boolean }) => unknown;
   undo_last_action: () => unknown;
   add_policy_rule: (input: AddPolicyRuleArgs) => unknown;
+  suggest_policy_rules: () => unknown;
+  add_suggested_policy_rule: (input: AddSuggestedPolicyRuleArgs) => unknown;
+  generate_analytics_report: (input: GenerateReportArgs) => unknown;
 };
 
 export function createToolDispatcher<TRecord extends { id: string }, TActionId extends string>(
@@ -234,6 +294,12 @@ export function createToolDispatcher<TRecord extends { id: string }, TActionId e
         return handlers.undo_last_action();
       case "add_policy_rule":
         return handlers.add_policy_rule(args as never);
+      case "suggest_policy_rules":
+        return handlers.suggest_policy_rules();
+      case "add_suggested_policy_rule":
+        return handlers.add_suggested_policy_rule(args as never);
+      case "generate_analytics_report":
+        return handlers.generate_analytics_report(args as never);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }

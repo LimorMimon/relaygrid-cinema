@@ -1,5 +1,30 @@
-import type { Operator, PolicyRiskLevel, PolicyRule, Transition } from "@/lib/grid-engine";
-import type { AddPolicyRuleArgs } from "@/lib/mcp-tools";
+/**
+ * The Media & Streaming domain — the only file in the app that knows what a
+ * "StreamRecord" is. `lib/grid-engine.ts` supplies generic filtering,
+ * batch-action planning, policy evaluation, and reporting math; everything
+ * here maps that generic machinery onto this domain's real fields
+ * (bitrate, CDN provider, audio/subtitle sync) and its 3 real actions.
+ *
+ * Read top to bottom: synthetic data generation → action execution rules →
+ * policy-rule glue (standing automation) → reporting glue (analytics) →
+ * the 3 seeded default policy rules → the suggested-rule catalog → demo-only
+ * tooling → `cinemaDomain`, the single object every other layer imports to
+ * plug this domain into the generic engine, hook, and MCP tool schema.
+ */
+import type {
+  AuditEntry,
+  Operator,
+  PolicyRiskLevel,
+  PolicyRule,
+  PolicySuggestion,
+  QueryNode,
+  ReportResult,
+  ReportSpec,
+  ReportTimeWindow,
+  Transition,
+} from "@/lib/grid-engine";
+import { groupAndCount, matches, withinReportWindow } from "@/lib/grid-engine";
+import type { AddPolicyRuleArgs, GenerateReportArgs } from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
 
 export type CDNProvider = "US-East" | "US-West" | "EU-West" | "EU-Central" | "APAC-East";
@@ -222,10 +247,14 @@ export function planCinemaAction(record: StreamRecord, action: CinemaActionId): 
 const POLICY_METRIC_ALIASES: Record<string, keyof StreamRecord & string> = {
   bitrate: "bitrateMbps",
   bitrate_mbps: "bitrateMbps",
+  bitrateMbps: "bitrateMbps",
   fps: "fps",
   audio_status: "audioStatus",
+  audioStatus: "audioStatus",
   subtitle_sync: "subtitleSync",
+  subtitleSync: "subtitleSync",
   cdn_provider: "cdnProvider",
+  cdnProvider: "cdnProvider",
   // No dedicated CDN-health field exists — the record's own derived
   // `status` ("Degraded"/"Failing"/...) is what stands in for it.
   cdn_status: "status",
@@ -300,6 +329,113 @@ export function resolveCinemaPolicyRule(
   };
 }
 
+// --- Reporting engine glue ----------------------------------------------
+//
+// The `generate_analytics_report` MCP tool hands Gemini's parsed request
+// here as loose strings; this module decides how filter_metric/group_by map
+// onto real StreamRecord fields (or the audit trail, for auto-remediation
+// counts) and rejects anything that doesn't have a real, well-defined
+// meaning rather than inventing one — e.g. there is no "resolution" field
+// on StreamRecord, so it is never accepted as a group_by.
+
+/**
+ * Fields with a real, bounded set of values — the only ones a report can
+ * bucket rows by. Accepts both the snake_case aliases the tool description
+ * teaches (matching add_policy_rule's convention) and the raw StreamRecord
+ * field names, since the generic mcp-tools.ts schema advertises the latter
+ * verbatim and Gemini sometimes uses those instead.
+ */
+const REPORT_GROUPABLE_FIELDS: Record<string, keyof StreamRecord & string> = {
+  cdn_provider: "cdnProvider",
+  cdnProvider: "cdnProvider",
+  audio_status: "audioStatus",
+  audioStatus: "audioStatus",
+  subtitle_sync: "subtitleSync",
+  subtitleSync: "subtitleSync",
+  status: "status",
+  cdn_status: "status",
+};
+
+type IssueMetric = { field: keyof StreamRecord & string; isIssue: (record: StreamRecord) => boolean };
+
+/**
+ * What counts as "an issue" for each supported filter_metric — mirrors the
+ * same thresholds `deriveFlags`/`deriveStatus` already use elsewhere, so a
+ * report's counts agree with what the grid itself flags as unhealthy.
+ */
+const REPORT_ISSUE_METRICS: Record<string, IssueMetric> = {
+  audio_status: { field: "audioStatus", isIssue: (r) => r.audioStatus !== "OK" },
+  audioStatus: { field: "audioStatus", isIssue: (r) => r.audioStatus !== "OK" },
+  subtitle_sync: { field: "subtitleSync", isIssue: (r) => r.subtitleSync !== "In Sync" },
+  subtitleSync: { field: "subtitleSync", isIssue: (r) => r.subtitleSync !== "In Sync" },
+  status: { field: "status", isIssue: (r) => r.status === "Degraded" || r.status === "Failing" },
+  cdn_status: { field: "status", isIssue: (r) => r.status === "Degraded" || r.status === "Failing" },
+  bitrate: { field: "bitrateMbps", isIssue: (r) => r.bitrateMbps < 3 },
+  bitrate_mbps: { field: "bitrateMbps", isIssue: (r) => r.bitrateMbps < 3 },
+  bitrateMbps: { field: "bitrateMbps", isIssue: (r) => r.bitrateMbps < 3 },
+};
+
+const REPORT_TIME_WINDOWS = new Set<ReportTimeWindow>(["1h", "24h", "7d", "all"]);
+
+export function resolveCinemaReport(
+  records: StreamRecord[],
+  audit: AuditEntry<StreamRecord, CinemaActionId>[],
+  args: GenerateReportArgs,
+): ReportResult | { error: string } {
+  const timeWindow = args.time_window as ReportTimeWindow;
+  if (!REPORT_TIME_WINDOWS.has(timeWindow)) {
+    return { error: `Unknown time_window "${args.time_window}". Supported: 1h, 24h, 7d, all` };
+  }
+
+  const groupField = REPORT_GROUPABLE_FIELDS[args.group_by];
+  if (!groupField) {
+    return {
+      error:
+        `Unknown group_by "${args.group_by}". Supported: ${Object.keys(REPORT_GROUPABLE_FIELDS).join(", ")} ` +
+        `— numeric, date, and id-like fields have too many unique values to group by.`,
+    };
+  }
+
+  const spec: ReportSpec = {
+    id: `report-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: args.report_title?.trim() || `${args.filter_metric} by ${args.group_by}`,
+    timeWindow,
+    metric: args.filter_metric,
+    groupBy: args.group_by,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (args.filter_metric === "auto_remediation_count") {
+    const recordById = new Map(records.map((r) => [r.id, r]));
+    const affected = audit
+      .filter((entry) => entry.source === "policy" && withinReportWindow(entry.timestamp, timeWindow))
+      .flatMap((entry) => entry.changedRecordIds)
+      .map((id) => recordById.get(id))
+      .filter((r): r is StreamRecord => Boolean(r));
+    const rows = groupAndCount(affected, (r) => String(r[groupField]));
+    return { spec, rows, total: affected.length, generatedAt: new Date().toISOString() };
+  }
+
+  const issueMetric = REPORT_ISSUE_METRICS[args.filter_metric];
+  if (!issueMetric) {
+    return {
+      error:
+        `Unknown filter_metric "${args.filter_metric}". Supported: ${Object.keys(REPORT_ISSUE_METRICS).join(", ")}, ` +
+        `auto_remediation_count`,
+    };
+  }
+
+  const matched = records.filter((r) => issueMetric.isIssue(r) && withinReportWindow(r.lastUpdated, timeWindow));
+  const rows = groupAndCount(matched, (r) => String(r[groupField]));
+  return { spec, rows, total: matched.length, generatedAt: new Date().toISOString() };
+}
+
+// --- Default policy rules ---------------------------------------------
+//
+// Seeded automatically for every new session (see PolicyOptions.defaultRules
+// in cinema-grid-app.tsx) — these are what's already active before a human
+// or Gemini adds anything.
+
 const SEEDED_AT = new Date(NOW).toISOString();
 
 /**
@@ -351,6 +487,142 @@ export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = 
   },
 ];
 
+// --- Suggested policy rules ---------------------------------------------
+//
+// A small, fixed catalog of candidate rules — each one genuinely functional
+// (planCinemaAction already handles the underlying field it checks) and
+// deliberately NOT already covered by DEFAULT_POLICY_RULES above, so a
+// suggestion always represents real, additional automation rather than a
+// duplicate of what's already active. Picked for relevance to live
+// broadcast/cinema operations specifically (the hackathon's domain), not
+// generic filler: silent audio and missing captions are total viewer-facing
+// failures, and the "Failing" catch-all closes the one status the default
+// CDN-failover rule (bitrate/"Degraded" only) doesn't reach.
+type PolicyRuleSuggestionTemplate = {
+  key: string;
+  description: string;
+  rationale: string;
+  root: QueryNode<StreamRecord>;
+  actionId: CinemaActionId;
+  riskLevel: PolicyRiskLevel;
+};
+
+const POLICY_RULE_SUGGESTION_CATALOG: PolicyRuleSuggestionTemplate[] = [
+  {
+    key: "muted-audio-autofix",
+    description: "Audio muted on an otherwise healthy stream → auto-restart the audio encoder",
+    rationale: "Silent live audio is a total viewer-facing failure — safe to auto-fix since it's reversible and the stream is otherwise healthy. The default audio rule only covers desync, not a full mute.",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        { kind: "condition", field: "audioStatus", operator: "eq", value: "Muted" },
+        { kind: "condition", field: "bitrateMbps", operator: "gte", value: 3.0 },
+      ],
+    },
+    actionId: "restart_audio_encoder",
+    riskLevel: "AUTONOMOUS",
+  },
+  {
+    key: "missing-subtitles-autofix",
+    description: "Subtitles missing entirely → auto-resync the subtitle track",
+    rationale: "A fully missing caption track is an accessibility-compliance risk, not just a sync-drift annoyance — the default subtitle rule only catches drifting, not a missing track.",
+    root: { kind: "condition", field: "subtitleSync", operator: "eq", value: "Missing" },
+    actionId: "resync_subtitles",
+    riskLevel: "AUTONOMOUS",
+  },
+  {
+    key: "failing-status-safety-net",
+    description: "Any stream in the worst health state (Failing) → switch to failover CDN for review",
+    rationale: "Closes a gap in the default failover rule, which only triggers on low bitrate or a \"Degraded\" status — a stream with multiple simultaneous issues can reach \"Failing\" without tripping either condition. Always a human-reviewed reroute, never automatic.",
+    root: { kind: "condition", field: "status", operator: "eq", value: "Failing" },
+    actionId: "switch_failover_cdn",
+    riskLevel: "REQUIRES_APPROVAL",
+  },
+];
+
+/** Deterministic — computed from real current data, never invented. Excludes anything already added (tracked via PolicyRule.sourceKey). */
+export function listPolicyRuleSuggestions(
+  records: StreamRecord[],
+  activeRules: PolicyRule<StreamRecord, CinemaActionId>[],
+): PolicySuggestion[] {
+  const addedKeys = new Set(activeRules.map((r) => r.sourceKey).filter((k): k is string => Boolean(k)));
+  return POLICY_RULE_SUGGESTION_CATALOG.filter((c) => !addedKeys.has(c.key))
+    .map((c) => ({
+      key: c.key,
+      description: c.description,
+      rationale: c.rationale,
+      actionLabel: cinemaDomain.actions.find((a) => a.id === c.actionId)?.label ?? c.actionId,
+      riskLevel: clampRisk(c.riskLevel, c.actionId),
+      matchCount: records.filter((r) => matches(r, c.root)).length,
+    }))
+    .sort((a, b) => b.matchCount - a.matchCount);
+}
+
+export function resolveSuggestedPolicyRule(key: string): PolicyRule<StreamRecord, CinemaActionId> | { error: string } {
+  const candidate = POLICY_RULE_SUGGESTION_CATALOG.find((c) => c.key === key);
+  if (!candidate) return { error: `Unknown suggestion_key "${key}".` };
+  return {
+    id: `policy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    description: candidate.description,
+    root: candidate.root,
+    actionId: candidate.actionId,
+    riskLevel: clampRisk(candidate.riskLevel, candidate.actionId),
+    createdAt: new Date().toISOString(),
+    sourceKey: candidate.key,
+  };
+}
+
+// --- Demo tooling ---------------------------------------------------------
+//
+// Everything in this app runs on an in-memory synthetic dataset — there is
+// no real backend, so nothing ever changes the grid except this app's own
+// actions. `injectRandomIncident` is an explicit, human-triggered test-harness
+// escape hatch: it mutates one currently-healthy record to prove the policy
+// engine reacts to genuinely new problems, not just the ones seeded at load.
+// It is intentionally NOT an MCP tool — it isn't a real agent capability.
+
+type IncidentTemplate = { label: string; apply: () => Partial<StreamRecord> };
+
+const INCIDENT_TEMPLATES: IncidentTemplate[] = [
+  { label: "Muted audio", apply: () => ({ audioStatus: "Muted" }) },
+  { label: "Audio desync", apply: () => ({ audioStatus: "Desync" }) },
+  { label: "Subtitles drifting", apply: () => ({ subtitleSync: "Drifting" }) },
+  { label: "Subtitles missing entirely", apply: () => ({ subtitleSync: "Missing" }) },
+  { label: "Bitrate collapse", apply: () => ({ bitrateMbps: Math.round((1 + Math.random() * 1.5) * 10) / 10 }) },
+];
+
+export function injectRandomIncident(
+  records: StreamRecord[],
+): { records: StreamRecord[]; summary: string; changedId: string } | { error: string } {
+  const candidates = records.filter((r) => r.statusFlags.length === 0);
+  if (candidates.length === 0) {
+    return { error: "Every stream already has an active issue — resolve some or reset the session before simulating a new one." };
+  }
+  const target = candidates[Math.floor(Math.random() * candidates.length)];
+  const template = INCIDENT_TEMPLATES[Math.floor(Math.random() * INCIDENT_TEMPLATES.length)];
+  const merged = { ...target, ...template.apply() };
+  const flags = deriveFlags(merged);
+  const updated: StreamRecord = {
+    ...merged,
+    statusFlags: flags,
+    status: deriveStatus(flags, merged.bitrateMbps),
+    lastUpdated: new Date().toISOString(),
+  };
+
+  return {
+    records: records.map((r) => (r.id === target.id ? updated : r)),
+    summary: `Simulated incident: ${updated.id} (${updated.channel}) now has ${template.label}.`,
+    changedId: updated.id,
+  };
+}
+
+// --- Domain config ---------------------------------------------------------
+//
+// The single object every other layer imports: the hook (useGridAgent),
+// the MCP tool schema builder, and the top-level page component all plug
+// into the generic engine through this — nothing else in the app needs to
+// know a StreamRecord has a `bitrateMbps` field.
 export const cinemaDomain: DomainConfig<StreamRecord, CinemaActionId> = {
   id: "media-streaming",
   name: "Media & Streaming",
