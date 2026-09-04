@@ -1,0 +1,22 @@
+# Reference clone (relaygrid-webmcp) — kept locally for research only, not part of this project
+/reference/
+
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# Env
+.env
+.env.local
+.env*.local
+
+# Misc
+.DS_Store
+*.log
+.wrangler/
+*.tsbuildinfo

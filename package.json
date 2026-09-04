@@ -1,0 +1,30 @@
+{
+  "name": "relaygrid-cinema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RelayGrid Cinema — an agentic Media & Streaming operations grid, controlled end-to-end through Gemini + WebMCP/MCP tool calls.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@google/genai": "^2.21.0",
+    "lucide-react": "^1.40.0",
+    "next": "^15.5.25",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.19.19",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.25",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  },
+  "type": "module"
+}

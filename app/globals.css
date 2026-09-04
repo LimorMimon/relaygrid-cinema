@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/*
+  RelayGrid Cinema — "Master Control Room" theme.
+  A dark broadcast-ops palette: phosphor teal for live/healthy signal,
+  amber for caution, tally-red for critical. IBM Plex Mono carries every
+  identifier, number, and label; IBM Plex Sans carries prose.
+*/
+@theme {
+  --font-display: var(--font-display), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+
+  --color-void: #090c11;
+  --color-void-2: #0d1117;
+  --color-panel: #11151d;
+  --color-panel-2: #161b25;
+  --color-line: #232a37;
+  --color-line-bright: #313b4c;
+
+  --color-ink: #e8edf4;
+  --color-ink-dim: #a7b1c2;
+  --color-ink-faint: #7a8599;
+
+  --color-signal: #37e6c4;
+  --color-signal-dim: #1a5c50;
+  --color-signal-soft: #0f2420;
+
+  --color-caution: #f0a83c;
+  --color-caution-soft: #2b2013;
+
+  --color-alert: #ff5c78;
+  --color-alert-soft: #2c1620;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color-scheme: dark;
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  background-image:
+    radial-gradient(ellipse 1200px 600px at 15% -10%, rgba(55, 230, 196, 0.07), transparent 60%),
+    radial-gradient(ellipse 900px 500px at 100% 0%, rgba(240, 168, 60, 0.05), transparent 55%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 3px);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-void);
+}
+
+/* Slim, dark scrollbars — a control-room panel shouldn't wear a bright OS scrollbar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-bright) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-bright);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(55, 230, 196, 0.55); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(55, 230, 196, 0); }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/*
+  Three-tier responsive workspace: one column on phones, a grid+sidebar
+  split from tablet up, and a full three-column split from desktop up.
+  Named areas (not source order) drive the reflow so no component ever
+  needs to be duplicated across breakpoints.
+*/
+.rg-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "grid"
+    "guide"
+    "chat";
+}
+@media (min-width: 768px) {
+  .rg-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    grid-template-areas:
+      "grid guide"
+      "grid chat";
+  }
+}
+@media (min-width: 1024px) {
+  .rg-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(340px, 400px);
+    grid-template-areas: "grid guide chat";
+  }
+}
+.rg-area-grid { grid-area: grid; }
+.rg-area-guide { grid-area: guide; }
+.rg-area-chat { grid-area: chat; }
+
+@keyframes pulse-dot-alert {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 92, 120, 0.55); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(255, 92, 120, 0); }
+}
+.animate-pulse-dot-alert {
+  animation: pulse-dot-alert 1.4s ease-in-out infinite;
+}
