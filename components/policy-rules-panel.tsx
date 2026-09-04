@@ -8,19 +8,22 @@
  * (cinema-grid-app.tsx) and the hook; this component only renders it.
  */
 import { useEffect, useMemo, useState } from "react";
-import { GitBranch, Plus, RefreshCw, Send, Sparkles, Workflow, Zap } from "lucide-react";
+import { GitBranch, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Workflow, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { describeNodeLines, type PolicyRule, type PolicyRiskLevel, type PolicySuggestion, type QueryNode } from "@/lib/grid-engine";
 import { CINEMA_DECISION_LADDERS, cinemaDomain, type CinemaActionId, type StreamRecord } from "@/lib/domains/cinema";
-import { DecisionLadderModal, PolicyFlowchartModal } from "@/components/policy-flowchart";
+import { AllRulesCheckModal, DecisionLadderModal, PolicyFlowchartModal } from "@/components/policy-flowchart";
 
 type FlowchartTarget = {
   title: string;
   description: string;
   root: QueryNode<StreamRecord>;
+  actionId: CinemaActionId;
   actionLabel: string;
   riskLevel: PolicyRiskLevel;
+  /** Set only when this is an already-active rule, so Validate Logic's conflict check can exclude it from otherRules. */
+  ruleId?: string;
 };
 
 type LadderTarget = {
@@ -45,6 +48,7 @@ export function PolicyRulesPanel({
   onAddSuggestion,
   onRefreshSuggestions,
   pendingRuleId,
+  records,
 }: {
   policyRules: PolicyRule<StreamRecord, CinemaActionId>[];
   onSend: (prompt: string) => void;
@@ -53,12 +57,15 @@ export function PolicyRulesPanel({
   onRefreshSuggestions: () => void;
   /** The rule currently asking for approval via a live action card, if any — highlighted in the Active list. */
   pendingRuleId?: string;
+  /** Live records — lets the flowchart modal's "Validate Logic" button test a rule against real current data. */
+  records: StreamRecord[];
 }) {
   const [draft, setDraft] = useState("");
   const [subTab, setSubTab] = useState<"active" | "suggested">("active");
   const [complexityTab, setComplexityTab] = useState<"simple" | "complex">("simple");
   const [flowchart, setFlowchart] = useState<FlowchartTarget | null>(null);
   const [ladderView, setLadderView] = useState<LadderTarget | null>(null);
+  const [allRulesCheckOpen, setAllRulesCheckOpen] = useState(false);
 
   // Bring the highlighted rule into view the moment it starts asking for approval.
   useEffect(() => {
@@ -121,7 +128,18 @@ export function PolicyRulesPanel({
             <p className="mt-0.5 text-[11px] text-ink-dim">Standing automation, evaluated continuously.</p>
           </div>
         </div>
-        <Badge className="shrink-0 border-auto/40 bg-auto-soft text-auto">{policyRules.length} active</Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge className="border-auto/40 bg-auto-soft text-auto">{policyRules.length} active</Badge>
+          <button
+            type="button"
+            title="Simulate every active rule against live data and against every other rule, all at once"
+            onClick={() => setAllRulesCheckOpen(true)}
+            disabled={policyRules.length === 0}
+            className="flex items-center gap-1.5 rounded border border-line-bright bg-panel-2 px-2 py-1 font-display text-[10px] font-semibold uppercase tracking-wider text-ink-dim hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ShieldCheck className="size-3" /> Check All Rules
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-line bg-panel-2/60 px-3 pt-2">
@@ -207,7 +225,9 @@ export function PolicyRulesPanel({
                       <li
                         key={rule.id}
                         className={
-                          isPending ? "border-l-2 border-caution bg-caution-soft/50 px-4 py-3" : "border-l-2 border-transparent px-4 py-3"
+                          isPending
+                            ? "border-l-2 border-transparent bg-caution-soft/50 px-4 py-3 ring-1 ring-inset ring-caution"
+                            : "border-l-2 border-transparent px-4 py-3"
                         }
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -226,8 +246,10 @@ export function PolicyRulesPanel({
                                       title: `Policy Rule #${i + 1}`,
                                       description: rule.description,
                                       root: rule.root,
+                                      actionId: rule.actionId,
                                       actionLabel: actionLabel(rule.actionId),
                                       riskLevel: rule.riskLevel,
+                                      ruleId: rule.id,
                                     })
                               }
                               className={`rounded border p-1 ${
@@ -308,6 +330,7 @@ export function PolicyRulesPanel({
                             title: s.description,
                             description: s.rationale,
                             root: s.root,
+                            actionId: s.actionId as CinemaActionId,
                             actionLabel: s.actionLabel,
                             riskLevel: s.riskLevel,
                           })
@@ -340,8 +363,12 @@ export function PolicyRulesPanel({
           title={flowchart.title}
           description={flowchart.description}
           root={flowchart.root}
+          actionId={flowchart.actionId}
           actionLabel={flowchart.actionLabel}
           riskLevel={flowchart.riskLevel}
+          ruleId={flowchart.ruleId}
+          otherRules={policyRules}
+          records={records}
           onClose={() => setFlowchart(null)}
         />
       )}
@@ -354,6 +381,7 @@ export function PolicyRulesPanel({
           onClose={() => setLadderView(null)}
         />
       )}
+      {allRulesCheckOpen && <AllRulesCheckModal rules={policyRules} records={records} onClose={() => setAllRulesCheckOpen(false)} />}
     </section>
   );
 }

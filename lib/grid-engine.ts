@@ -256,6 +256,8 @@ export type PolicySuggestion<TRecord = unknown> = {
   matchCount: number;
   /** The real condition tree — exposed so the UI can render it (as text or a flowchart), not just the English description. */
   root: QueryNode<TRecord>;
+  /** The raw action id (not just its label) — needed to run validatePolicyRule before this suggestion is even added. */
+  actionId: string;
 };
 
 /** Pure evaluation: which records currently match each active policy rule. */
@@ -264,6 +266,132 @@ export function evaluatePolicyRules<TRecord extends { id: string }, TActionId ex
   rules: PolicyRule<TRecord, TActionId>[],
 ): Array<{ rule: PolicyRule<TRecord, TActionId>; matches: TRecord[] }> {
   return rules.map((rule) => ({ rule, matches: records.filter((record) => matches(record, rule.root)) }));
+}
+
+export type PolicyRuleFinding = { severity: "error" | "info"; message: string };
+export type PolicyRuleValidation = { ok: boolean; findings: PolicyRuleFinding[] };
+/** One line of "what is being checked right now, and did it pass" — reported live as validatePolicyRule works, not just in the final findings. */
+export type PolicyRuleCheckStep = { label: string; ok: boolean };
+
+function applyIfMatches<TRecord extends { id: string }, TActionId extends string>(
+  record: TRecord,
+  step: Pick<PolicyRule<TRecord, TActionId>, "root" | "actionId">,
+  planAction: PlanActionFn<TRecord, TActionId>,
+): TRecord {
+  if (!matches(record, step.root)) return record;
+  const transition = planAction(record, step.actionId);
+  return transition.allowed ? { ...record, ...transition.patch } : record;
+}
+
+/**
+ * Simulates one real application of a rule's action against a record it
+ * actually matches, then checks it three ways against the domain's own
+ * planAction — not a hand-authored list of "known bad patterns":
+ *   1. Dead rule — the action's own guard rejects it outright on a real
+ *      match (e.g. the target field is already in the state the action
+ *      would set it to). The rule can never do anything.
+ *   2. Loop risk — the rule's condition tree is STILL true on the record
+ *      after applying the action's own patch. This means the trigger
+ *      doesn't reference what the action actually resolves, so the rule
+ *      keeps re-matching the same records forever (each retry is a safe
+ *      no-op once the field the action *does* touch is already fixed —
+ *      every action here is itself idempotent — but it's a real sign the
+ *      rule's author pointed the condition at the wrong field).
+ *   3. Conflicts with each other active rule (`otherRules`) — for every
+ *      pair, finds a real record that currently matches both, and checks
+ *      whether the order the two rules happen to run in (an implementation
+ *      detail, not something either rule's author controls) changes the
+ *      outcome. Two runs are simulated, re-checking each rule's own
+ *      condition before its step exactly like the live evaluation loop
+ *      does: ruleA's action then ruleB's (if ruleB still matches after),
+ *      versus ruleB's action then ruleA's (if ruleA still matches after).
+ *      If the two orders land on a different final value for any field —
+ *      or one order lets both actions fire while the other silently skips
+ *      one because the first action already changed what the second was
+ *      looking for — the two rules are fighting over that record. This is
+ *      discovered empirically by running both orders and diffing the
+ *      result, never by guessing from field names.
+ * Requires a currently-matching record to test each thing against; can't
+ * prove anything about a rule (or a pair) with no live overlap right now.
+ * `otherRules` (default none) is every other currently active rule to
+ * cross-check against — pass the rule's own id in `rule` so it can exclude
+ * itself if it happens to already be in that list. `onStep`, if given, is
+ * called once per individual check as it runs (own-action check, loop-risk
+ * check, then one per other rule) — the live "what's being checked, and
+ * did it pass" trace the UI can narrate as the validation happens.
+ */
+export function validatePolicyRule<TRecord extends { id: string }, TActionId extends string>(
+  rule: Pick<PolicyRule<TRecord, TActionId>, "root" | "actionId"> & { id?: string },
+  records: TRecord[],
+  planAction: PlanActionFn<TRecord, TActionId>,
+  otherRules: PolicyRule<TRecord, TActionId>[] = [],
+  onStep?: (step: PolicyRuleCheckStep) => void,
+): PolicyRuleValidation {
+  const findings: PolicyRuleFinding[] = [];
+  const sample = records.find((r) => matches(r, rule.root));
+
+  if (!sample) {
+    findings.push({
+      severity: "info",
+      message: "No stream currently matches this rule's trigger, so it can't be tested against real data right now — try again after the grid changes.",
+    });
+    onStep?.({ label: "Checking the rule against live data", ok: true });
+  } else {
+    const transition = planAction(sample, rule.actionId);
+    const canRun = transition.allowed;
+    onStep?.({ label: `Checking the action can actually run (sample: ${sample.id})`, ok: canRun });
+    if (!canRun) {
+      findings.push({
+        severity: "error",
+        message: `Dead rule: on a real matching stream (${sample.id}), the action's own guard rejects it — "${transition.reason}". This rule can never actually do anything.`,
+      });
+    } else {
+      const patched = { ...sample, ...transition.patch };
+      const noLoopRisk = !matches(patched, rule.root);
+      onStep?.({ label: "Checking the action resolves its own trigger (no loop risk)", ok: noLoopRisk });
+      if (!noLoopRisk) {
+        findings.push({
+          severity: "error",
+          message: `Loop risk: after applying its own action to ${sample.id}, the record still matches this rule's trigger. The condition doesn't reference the field the action actually resolves, so it will keep re-matching the same streams every tick indefinitely.`,
+        });
+      } else {
+        findings.push({
+          severity: "info",
+          message: `Verified against ${sample.id}: applying the action resolves exactly the condition that triggered it — no loop risk, no dead rule.`,
+        });
+      }
+    }
+  }
+
+  for (let i = 0; i < otherRules.length; i++) {
+    const other = otherRules[i];
+    if (rule.id && other.id === rule.id) continue;
+    // The same action applied to the same record always produces the same
+    // patch, so two rules that both resolve to the same action can never
+    // disagree — only different actions can genuinely fight. Not worth its
+    // own step; it's not a check, just a fast skip.
+    if (other.actionId === rule.actionId) continue;
+
+    const label = `Checking for a conflict with Policy Rule #${i + 1} ("${other.description}")`;
+    const overlap = records.find((r) => matches(r, rule.root) && matches(r, other.root));
+    if (!overlap) {
+      onStep?.({ label, ok: true });
+      continue;
+    }
+
+    const orderA = applyIfMatches(applyIfMatches(overlap, rule, planAction), other, planAction);
+    const orderB = applyIfMatches(applyIfMatches(overlap, other, planAction), rule, planAction);
+    const disagrees = (Object.keys(orderA) as (keyof TRecord)[]).some((key) => JSON.stringify(orderA[key]) !== JSON.stringify(orderB[key]));
+    onStep?.({ label, ok: !disagrees });
+    if (disagrees) {
+      findings.push({
+        severity: "error",
+        message: `Conflicts with Policy Rule #${i + 1} ("${other.description}"): both match ${overlap.id}, but which one runs first changes the outcome — they're fighting over the same field.`,
+      });
+    }
+  }
+
+  return { ok: findings.every((f) => f.severity !== "error"), findings };
 }
 
 // --- Audit trail ----------------------------------------------------------

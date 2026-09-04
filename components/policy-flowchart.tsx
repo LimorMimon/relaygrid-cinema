@@ -7,9 +7,11 @@
  * react to different values of the same field with different actions,
  * shown together as one branching diagram (see DecisionLadderFlowchart).
  */
-import { X } from "lucide-react";
-import type { QueryNode, PolicyRiskLevel } from "@/lib/grid-engine";
-import type { StreamRecord } from "@/lib/domains/cinema";
+import { useState } from "react";
+import { AlertTriangle, CircleCheck, Info, ShieldCheck, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { validatePolicyRule, type PolicyRule, type PolicyRuleValidation, type QueryNode, type PolicyRiskLevel } from "@/lib/grid-engine";
+import { cinemaDomain, type CinemaActionId, type StreamRecord } from "@/lib/domains/cinema";
 
 const OPERATOR_SYMBOLS: Record<string, string> = {
   eq: "=",
@@ -152,7 +154,95 @@ export function DecisionLadderFlowchart({
   );
 }
 
-function FlowchartModalShell({
+/** Whether a validation result reads as a pass, a failure, or "nothing to test yet" — drives both the finding box's color and its icon set. Shared by the single-rule and all-rules views so the two always agree on what a given result looks like. */
+function validationTone(result: PolicyRuleValidation): "fail" | "inconclusive" | "pass" {
+  const untested = result.ok && result.findings[0]?.severity === "info" && result.findings[0]?.message.includes("can't be tested");
+  return !result.ok ? "fail" : untested ? "inconclusive" : "pass";
+}
+
+/**
+ * Renders one validatePolicyRule result: a colored box (reusing the app's
+ * existing status vocabulary rather than inventing a fourth — alert/red for
+ * a real problem, good/green for a verified pass, caution/amber for
+ * "nothing currently matches, so this proved nothing," deliberately not
+ * styled as a pass) with one line per finding, since a rule can fail more
+ * than one check at once.
+ */
+export function ValidationFindingsBox({ result }: { result: PolicyRuleValidation }) {
+  const tone = validationTone(result);
+  return (
+    <div
+      className={`rounded border px-2.5 py-2 text-[11px] leading-4 ${
+        tone === "fail"
+          ? "border-alert/40 bg-alert-soft text-alert"
+          : tone === "inconclusive"
+            ? "border-caution/40 bg-caution-soft text-caution"
+            : "border-good/40 bg-good-soft text-good"
+      }`}
+    >
+      <p className="font-display text-[9px] font-bold uppercase tracking-wider">
+        {tone === "fail" ? "Logic issue found" : tone === "inconclusive" ? "Nothing to test right now" : "Verified"}
+      </p>
+      <div className="mt-1.5 space-y-1.5">
+        {result.findings.map((finding, i) => (
+          <div key={i} className="flex items-start gap-2">
+            {finding.severity === "error" ? (
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            ) : tone === "inconclusive" ? (
+              <Info className="mt-0.5 size-3.5 shrink-0" />
+            ) : (
+              <CircleCheck className="mt-0.5 size-3.5 shrink-0" />
+            )}
+            <p className="opacity-90">{finding.message}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Runs validatePolicyRule on demand (simulates the rule's own action against
+ * a real matching record, then cross-checks every other active rule for a
+ * genuine order-dependent conflict — see grid-engine.ts for exactly what it
+ * checks) and renders the verdict via ValidationFindingsBox above.
+ */
+function ValidateLogicPanel({
+  root,
+  actionId,
+  ruleId,
+  otherRules,
+  records,
+}: {
+  root: QueryNode<StreamRecord>;
+  actionId: CinemaActionId;
+  /** This rule's own id, if it's already active — lets the conflict check exclude itself from otherRules. Omit for a not-yet-added suggestion. */
+  ruleId?: string;
+  /** Every other currently active rule, to cross-check for conflicts. */
+  otherRules: PolicyRule<StreamRecord, CinemaActionId>[];
+  records: StreamRecord[];
+}) {
+  const [result, setResult] = useState<PolicyRuleValidation | null>(null);
+
+  function runValidation() {
+    setResult(validatePolicyRule({ root, actionId, id: ruleId }, records, cinemaDomain.planAction, otherRules));
+  }
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <Button size="sm" variant="outline" onClick={runValidation} className="w-full">
+        <ShieldCheck className="size-3.5" /> Validate Logic
+      </Button>
+      {result && (
+        <div className="mt-2.5">
+          <ValidationFindingsBox result={result} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FlowchartModalShell({
   title,
   description,
   onClose,
@@ -186,20 +276,79 @@ export function PolicyFlowchartModal({
   title,
   description,
   root,
+  actionId,
   actionLabel,
   riskLevel,
+  ruleId,
+  otherRules,
+  records,
   onClose,
 }: {
   title: string;
   description: string;
   root: QueryNode<StreamRecord>;
+  actionId: CinemaActionId;
   actionLabel: string;
   riskLevel: PolicyRiskLevel;
+  /** This rule's own id, if it's already active — lets the conflict check exclude itself from otherRules. Omit for a not-yet-added suggestion. */
+  ruleId?: string;
+  /** Every other currently active rule, to cross-check for conflicts. */
+  otherRules: PolicyRule<StreamRecord, CinemaActionId>[];
+  records: StreamRecord[];
   onClose: () => void;
 }) {
   return (
     <FlowchartModalShell title={title} description={description} onClose={onClose}>
       <PolicyFlowchart root={root} actionLabel={actionLabel} riskLevel={riskLevel} />
+      <ValidateLogicPanel root={root} actionId={actionId} ruleId={ruleId} otherRules={otherRules} records={records} />
+    </FlowchartModalShell>
+  );
+}
+
+/**
+ * The "Check All Rules" button's result: every active rule re-validated
+ * against live data AND cross-checked against every other active rule for
+ * an order-dependent conflict, all at once — a full simulation of the
+ * current rule set rather than one rule at a time.
+ */
+export function AllRulesCheckModal({
+  rules,
+  records,
+  onClose,
+}: {
+  rules: PolicyRule<StreamRecord, CinemaActionId>[];
+  records: StreamRecord[];
+  onClose: () => void;
+}) {
+  const summaries = rules.map((rule, i) => ({
+    ruleNumber: i + 1,
+    description: rule.description,
+    result: validatePolicyRule({ root: rule.root, actionId: rule.actionId, id: rule.id }, records, cinemaDomain.planAction, rules),
+  }));
+  const issueCount = summaries.filter((s) => !s.result.ok).length;
+
+  return (
+    <FlowchartModalShell
+      title="All-Rules Check"
+      description={
+        issueCount === 0
+          ? `Every one of the ${rules.length} active rules was simulated against live data and against every other rule — no dead rules, loop risks, or conflicts found.`
+          : `${issueCount} of ${rules.length} active rules have a real problem — simulated against live data and against every other rule.`
+      }
+      onClose={onClose}
+    >
+      <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+        {summaries.map((s) => (
+          <div key={s.ruleNumber}>
+            <p className="mb-1 text-xs font-medium leading-5 text-ink">
+              <span className="mr-1.5 font-display font-bold text-ink-faint">#{s.ruleNumber}</span>
+              {s.description}
+            </p>
+            <ValidationFindingsBox result={s.result} />
+          </div>
+        ))}
+        {rules.length === 0 && <p className="text-center text-[11px] leading-4 text-ink-faint">No active rules to check.</p>}
+      </div>
     </FlowchartModalShell>
   );
 }

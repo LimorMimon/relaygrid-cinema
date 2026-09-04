@@ -718,6 +718,7 @@ export function listPolicyRuleSuggestions(
       riskLevel: clampRisk(c.riskLevel, c.actionId),
       matchCount: records.filter((r) => matches(r, c.root)).length,
       root: c.root,
+      actionId: c.actionId,
     }))
     .sort((a, b) => b.matchCount - a.matchCount);
 }

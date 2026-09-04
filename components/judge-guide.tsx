@@ -86,7 +86,7 @@ export function JudgeGuide({
               key={step.title}
               className={
                 active
-                  ? "border-l-2 border-signal bg-signal-soft/60 p-3"
+                  ? "border-l-2 border-transparent bg-signal-soft/60 p-3 ring-1 ring-inset ring-signal"
                   : "border-l-2 border-transparent px-3 py-2"
               }
             >

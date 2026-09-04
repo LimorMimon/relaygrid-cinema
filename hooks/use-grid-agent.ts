@@ -27,6 +27,7 @@ import {
   evaluatePolicyRules,
   explain,
   runQuery,
+  validatePolicyRule,
   validateQuery,
   type AuditEntry,
   type PolicyRule,
@@ -75,6 +76,10 @@ export type PolicyOptions<TRecord, TActionId extends string> = {
   onAutoExecuted?: (message: string) => void;
   /** e.g. "🛎 Policy Rule #3 flagged 2 streams — review the action card to approve." */
   onEscalated?: (message: string) => void;
+  /** Called right after a rule is added (manually via add_policy_rule, or picked from Suggested) ONLY when validatePolicyRule finds a real problem — a dead rule, a loop risk, or a conflict with another active rule. Never fires for a clean rule or an inconclusive "nothing matches yet" result. */
+  onRuleWarning?: (message: string) => void;
+  /** Called once per individual check validatePolicyRule runs while validating a newly-added rule (own-action check, loop-risk check, then one per other active rule) — a live "what's being checked, and did it pass" trace, regardless of the final outcome. */
+  onRuleCheckStep?: (message: string) => void;
   /** Computes candidate rules from real current data, excluding ones already active. Omit to disable the suggestions feature entirely. */
   listSuggestions?: (records: TRecord[], activeRules: PolicyRule<TRecord, TActionId>[]) => PolicySuggestion<TRecord>[];
   /** Turns a suggestion's key into the real (possibly compound-condition) PolicyRule to register — bypasses add_policy_rule's flat metric/operator/threshold schema. */
@@ -284,14 +289,29 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         if (!policyOptions) return reject(input.condition_description ?? "Add policy rule", "This grid does not support policy rules.");
         const resolved = policyOptions.resolveRule(input);
         if ("error" in resolved) return reject(input.condition_description ?? "Add policy rule", resolved.error);
+        const s = live.current;
         setPolicyRules((rules) => [...rules, resolved]);
         setAgentNotice(null);
+        const ruleNumber = s.policyRules.length + 1;
+        policyOptions.onRuleCheckStep?.(`Validating Policy Rule #${ruleNumber} ("${resolved.description}")…`);
+        const validation = validatePolicyRule(
+          { root: resolved.root, actionId: resolved.actionId },
+          s.records,
+          s.domain.planAction,
+          s.policyRules,
+          (step) => policyOptions.onRuleCheckStep?.(`${step.label} → ${step.ok ? "OK" : "ISSUE FOUND"}`),
+        );
+        if (!validation.ok) {
+          const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
+          policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
+        }
         return {
           ruleId: resolved.id,
           description: resolved.description,
           riskLevel: resolved.riskLevel,
           requestedRiskLevel: input.risk_level,
           riskLevelAdjusted: resolved.riskLevel !== input.risk_level,
+          validationOk: validation.ok,
         };
       },
       suggest_policy_rules: () => {
@@ -309,10 +329,29 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         const nextRules = [...s.policyRules, resolved];
         setPolicyRules(nextRules);
         setAgentNotice(null);
+        const ruleNumber = nextRules.length;
+        policyOptions.onRuleCheckStep?.(`Validating Policy Rule #${ruleNumber} ("${resolved.description}")…`);
+        const validation = validatePolicyRule(
+          { root: resolved.root, actionId: resolved.actionId },
+          s.records,
+          s.domain.planAction,
+          s.policyRules,
+          (step) => policyOptions.onRuleCheckStep?.(`${step.label} → ${step.ok ? "OK" : "ISSUE FOUND"}`),
+        );
+        if (!validation.ok) {
+          const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
+          policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
+        }
         // Computed here (not via a separate suggest_policy_rules call) so the caller
         // gets the post-add list without racing React's async state commit.
         const remainingSuggestions = policyOptions.listSuggestions?.(s.records, nextRules) ?? [];
-        return { ruleId: resolved.id, description: resolved.description, riskLevel: resolved.riskLevel, remainingSuggestions };
+        return {
+          ruleId: resolved.id,
+          description: resolved.description,
+          riskLevel: resolved.riskLevel,
+          remainingSuggestions,
+          validationOk: validation.ok,
+        };
       },
       generate_analytics_report: (input) => {
         if (!reportingOptions) return reject(input.report_title ?? "Generate analytics report", "This grid does not support analytics reports.");

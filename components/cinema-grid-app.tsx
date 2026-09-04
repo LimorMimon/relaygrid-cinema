@@ -9,7 +9,7 @@
  * here is reusable across domains on purpose.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, Clapperboard, Database, Dices, RotateCcw, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, Clapperboard, Database, Dices, MousePointerClick, RotateCcw, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RelayGrid } from "@/components/relay-grid";
@@ -49,6 +49,8 @@ export default function CinemaGridApp() {
       markAutoResolved: (record) => (record.statusFlags.length === 0 ? { ...record, status: "Auto-Resolved" } : record),
       onAutoExecuted: (message) => chatRef.current?.logPolicyMessage(message),
       onEscalated: (message) => chatRef.current?.logPolicyMessage(message),
+      onRuleWarning: (message) => chatRef.current?.logRuleWarning(message),
+      onRuleCheckStep: (message) => chatRef.current?.logValidationStep(message),
       listSuggestions: listPolicyRuleSuggestions,
       resolveSuggestion: resolveSuggestedPolicyRule,
     }),
@@ -259,14 +261,42 @@ export default function CinemaGridApp() {
           chat columns use.
         */}
         <aside className="rg-area-guide flex min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:sticky md:top-0 md:h-full md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0 lg:h-[calc(100vh-4rem)]">
+          {/*
+            Left to right follows the actual workflow: Policies (the
+            standing config, already in place before anything happens) ->
+            Guide (the manual step-by-step scenario that exercises it) ->
+            Reports (a retrospective over what those steps produced). The
+            default *selected* tab stays "guide" below (still the intended
+            landing point for a judge) regardless of this button order.
+          */}
           <div className="flex shrink-0 gap-1 rounded border border-line bg-panel p-1">
             <button
               type="button"
+              onClick={() => setMiddleTab("policies")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                middleTab === "policies" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              <Zap className="size-3.5" />
+              Policies
+              {policyRules.length > 0 && (
+                <span
+                  className={`grid size-4 place-items-center rounded-full font-display text-[9px] font-bold ${
+                    middleTab === "policies" ? "bg-void/25 text-void" : "bg-signal-soft text-signal"
+                  }`}
+                >
+                  {policyRules.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setMiddleTab("guide")}
-              className={`flex-1 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
                 middleTab === "guide" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
               }`}
             >
+              <MousePointerClick className="size-3.5" />
               Guide
             </button>
             <button
@@ -288,38 +318,9 @@ export default function CinemaGridApp() {
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              onClick={() => setMiddleTab("policies")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                middleTab === "policies" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
-              }`}
-            >
-              <Zap className="size-3.5" />
-              Policies
-              {policyRules.length > 0 && (
-                <span
-                  className={`grid size-4 place-items-center rounded-full font-display text-[9px] font-bold ${
-                    middleTab === "policies" ? "bg-void/25 text-void" : "bg-signal-soft text-signal"
-                  }`}
-                >
-                  {policyRules.length}
-                </span>
-              )}
-            </button>
           </div>
 
-          {middleTab === "guide" ? (
-            <JudgeGuide
-              completedSteps={completedSteps}
-              onSend={setInjectedPrompt}
-              onReset={resetSession}
-              onAutoRun={runFullScenario}
-              autoRunning={autoRunning}
-            />
-          ) : middleTab === "reports" ? (
-            <ReportsPanel reports={reports} savedReportSpecs={savedReportSpecs} />
-          ) : (
+          {middleTab === "policies" ? (
             <PolicyRulesPanel
               policyRules={policyRules}
               onSend={setInjectedPrompt}
@@ -327,7 +328,18 @@ export default function CinemaGridApp() {
               onAddSuggestion={addSuggestedRule}
               onRefreshSuggestions={refreshSuggestions}
               pendingRuleId={preview?.triggeredByRuleId}
+              records={records}
             />
+          ) : middleTab === "guide" ? (
+            <JudgeGuide
+              completedSteps={completedSteps}
+              onSend={setInjectedPrompt}
+              onReset={resetSession}
+              onAutoRun={runFullScenario}
+              autoRunning={autoRunning}
+            />
+          ) : (
+            <ReportsPanel reports={reports} savedReportSpecs={savedReportSpecs} />
           )}
           {preview && <ActionCard preview={preview} busy={executing} onApprove={handleApprove} onDismiss={dismissPreview} />}
         </aside>

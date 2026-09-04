@@ -7,7 +7,7 @@ import type { GeminiFunctionDeclaration } from "@/lib/mcp-tools";
 type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 
-type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy" | "sim"; text: string };
+type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy" | "sim" | "warning"; text: string };
 
 const MAX_TURNS = 10;
 
@@ -62,6 +62,10 @@ export type AgentChatPanelHandle = {
   logPolicyMessage: (text: string) => void;
   /** Logs a demo-tooling event (e.g. a manually-injected test incident) — not a real tool call or agent decision. */
   logSimulatedEvent: (text: string) => void;
+  /** Logs a validatePolicyRule finding for a rule that was just added (manually or from Suggested) — a dead rule or a loop risk. */
+  logRuleWarning: (text: string) => void;
+  /** Logs one live step of validatePolicyRule running against a newly-added rule — what it's checking, and whether that check passed. */
+  logValidationStep: (text: string) => void;
 };
 
 export const AgentChatPanel = forwardRef<
@@ -109,6 +113,12 @@ export const AgentChatPanel = forwardRef<
     },
     logSimulatedEvent: (text) => {
       appendMessage({ kind: "sim", text });
+    },
+    logRuleWarning: (text) => {
+      appendMessage({ kind: "warning", text });
+    },
+    logValidationStep: (text) => {
+      appendMessage({ kind: "tool", text });
     },
   }));
 
@@ -198,6 +208,10 @@ export const AgentChatPanel = forwardRef<
               </div>
             ) : m.kind === "sim" ? (
               <div className="max-w-[92%] rounded border border-dashed border-line-bright bg-panel-2/60 px-2.5 py-1.5 font-display text-[11px] italic text-ink-dim">
+                {m.text}
+              </div>
+            ) : m.kind === "warning" ? (
+              <div className="max-w-[92%] whitespace-pre-wrap rounded border-l-2 border-caution bg-caution-soft px-3 py-2 text-sm leading-5 text-ink">
                 {m.text}
               </div>
             ) : (
