@@ -123,7 +123,21 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   }, [recentlyChangedIds]);
 
   const results = useMemo(() => (query ? runQuery(records, query) : records), [records, query]);
-  const visibleBatch = useMemo(() => results.slice(0, domain.batchSize), [results, domain.batchSize]);
+  // While a "just changed" flash is active (recentlyChangedIds above),
+  // pin those specific records to the front of the visible batch — a stable
+  // partition, not a real sort — so a batch action's full effect is visible
+  // together even when some of the affected records would otherwise have
+  // been outside the first `batchSize` rows. Reverts to natural order the
+  // moment the flash clears.
+  const visibleBatch = useMemo(() => {
+    if (recentlyChangedIds.size === 0) return results.slice(0, domain.batchSize);
+    const changed: TRecord[] = [];
+    const rest: TRecord[] = [];
+    for (const record of results) {
+      (recentlyChangedIds.has(record.id) ? changed : rest).push(record);
+    }
+    return [...changed, ...rest].slice(0, domain.batchSize);
+  }, [results, domain.batchSize, recentlyChangedIds]);
   const fieldNames = useMemo(() => new Set(domain.fields.map((f) => f.key)), [domain]);
 
   const live = useRef({ records, query, results, preview, audit, domain, policyRules });

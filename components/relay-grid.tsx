@@ -3,37 +3,51 @@ import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_LABELS, type StreamRecord } from "@/lib/domains/cinema";
 
+// Deliberately the BRIGHT base tokens at low opacity, not the pre-darkened
+// "-soft" badge variants — the "-soft" swatches are already near-black and
+// barely separate from the panel background across a full-width row, even
+// at high opacity. A wash of the saturated color reads as unmistakably
+// tinted at a glance down a dense 220-row table.
 const statusRowClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "hover:bg-panel-2",
-  Degraded: "bg-caution-soft/70 hover:bg-caution-soft/90",
-  Failing: "bg-alert-soft/70 hover:bg-alert-soft/90",
-  Rerouted: "bg-signal-soft/70 hover:bg-signal-soft/90",
-  "Auto-Resolved": "bg-auto-soft/70 hover:bg-auto-soft/90",
+  // Deliberately a gentler wash than the other four — Healthy is the
+  // majority status (most of 220 rows), so full-strength green everywhere
+  // would drown out the amber/red rows that actually need attention. Still
+  // clearly, confirmably green, just quieter.
+  Healthy: "bg-good/[0.07] hover:bg-good/15",
+  Degraded: "bg-caution/[0.16] hover:bg-caution/25",
+  // Deliberately the strongest wash of the five — Failing is the single
+  // worst status a stream can be in, and should read as more urgent than
+  // Degraded, not just differently colored.
+  Failing: "bg-alert/[0.26] hover:bg-alert/36",
+  Rerouted: "bg-signal/[0.14] hover:bg-signal/22",
+  "Auto-Resolved": "bg-auto/[0.16] hover:bg-auto/25",
 };
 /** Applied to the first `<td>` only — a left border on `<tr>` itself renders unreliably under border-collapse. */
 const statusAccentClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "border-l-2 border-transparent",
+  Healthy: "border-l-2 border-good/50",
   Degraded: "border-l-2 border-caution",
-  Failing: "border-l-2 border-alert",
+  // Thicker than the other four (border-l-4 vs border-l-2) — the one status
+  // that should never blend into the rest of the table.
+  Failing: "border-l-4 border-alert",
   Rerouted: "border-l-2 border-signal",
   "Auto-Resolved": "border-l-2 border-auto",
 };
 const statusIdTextClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "text-signal",
+  Healthy: "text-good",
   Degraded: "text-caution",
-  Failing: "text-alert",
+  Failing: "text-alert font-bold",
   Rerouted: "text-signal",
   "Auto-Resolved": "text-auto",
 };
 const statusBadgeClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "border-line-bright bg-panel-2 text-ink-dim",
+  Healthy: "border-good/40 bg-good-soft text-good",
   Degraded: "border-caution/40 bg-caution-soft text-caution",
   Failing: "border-alert/40 bg-alert-soft text-alert",
   Rerouted: "border-signal/40 bg-signal-soft text-signal",
   "Auto-Resolved": "border-auto/40 bg-auto-soft text-auto",
 };
 const statusDotClasses: Record<StreamRecord["status"], string> = {
-  Healthy: "bg-ink-faint",
+  Healthy: "bg-good",
   Degraded: "bg-caution",
   Failing: "animate-pulse-dot-alert bg-alert",
   Rerouted: "animate-pulse-dot bg-signal",

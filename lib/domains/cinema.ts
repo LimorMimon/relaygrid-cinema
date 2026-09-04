@@ -7,7 +7,7 @@
  *
  * Read top to bottom: synthetic data generation → action execution rules →
  * policy-rule glue (standing automation) → reporting glue (analytics) →
- * the 3 seeded default policy rules → the suggested-rule catalog → demo-only
+ * the seeded default policy rules → the suggested-rule catalog → demo-only
  * tooling → `cinemaDomain`, the single object every other layer imports to
  * plug this domain into the generic engine, hook, and MCP tool schema.
  */
@@ -439,12 +439,14 @@ export function resolveCinemaReport(
 const SEEDED_AT = new Date(NOW).toISOString();
 
 /**
- * The three pre-configured rules from the spec. Two notes on translating
- * them to this data model: (1) Rule 1 says audio "Out of Sync" — our
- * AudioStatus enum has no such value, so this uses "Desync", the audio
- * value that actually means the same thing. (2) Rule 2 says subtitle_sync
- * "Delayed" — SubtitleSync has no such value either; "Drifting" is the
- * closest real one (accumulating timing delay).
+ * The three pre-configured rules from the spec, plus the two-part Failover
+ * Readiness Triage ladder below them (added later, see its own comment).
+ * Two notes on translating the original spec's rules to this data model:
+ * (1) Rule 1 says audio "Out of Sync" — our AudioStatus enum has no such
+ * value, so this uses "Desync", the audio value that actually means the
+ * same thing. (2) Rule 2 says subtitle_sync "Delayed" — SubtitleSync has no
+ * such value either; "Drifting" is the closest real one (accumulating
+ * timing delay).
  */
 export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = [
   {
@@ -483,6 +485,52 @@ export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = 
     },
     actionId: "switch_failover_cdn",
     riskLevel: "REQUIRES_APPROVAL",
+    createdAt: SEEDED_AT,
+  },
+  // --- Failover Readiness Triage (2-part decision ladder) ---------------
+  //
+  // Real gap the rule above has: it escalates every degraded/failing stream
+  // for a human to review a reroute — including streams where
+  // `failoverAvailable` is false, where that reroute cannot actually
+  // succeed (planCinemaAction rejects it outright). Paging a human for an
+  // action that structurally can't run is real alert fatigue, a well-known
+  // ops anti-pattern this industry cares about. This ladder branches on the
+  // one field no other rule reads (`failoverAvailable`) to reroute *only*
+  // when a fix is actually reachable, and otherwise auto-remediate whatever
+  // symptom is safe to self-heal — so a human is never paged over a
+  // broadcast that has no failover path to review in the first place:
+  //   if (!failoverAvailable)
+  //     if (audioStatus != "OK")            -> auto-restart the audio encoder
+  //     else if (subtitleSync != "In Sync") -> auto-resync subtitles
+  //   else                                   -> already handled by the rule above
+  {
+    id: "policy-default-no-failover-audio",
+    description: "No failover CDN configured and audio is at fault → auto-restart the audio encoder",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        { kind: "condition", field: "failoverAvailable", operator: "eq", value: false },
+        { kind: "condition", field: "audioStatus", operator: "neq", value: "OK" },
+      ],
+    },
+    actionId: "restart_audio_encoder",
+    riskLevel: "AUTONOMOUS",
+    createdAt: SEEDED_AT,
+  },
+  {
+    id: "policy-default-no-failover-subtitle",
+    description: "No failover CDN configured and subtitles are at fault → auto-resync subtitles",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        { kind: "condition", field: "failoverAvailable", operator: "eq", value: false },
+        { kind: "condition", field: "subtitleSync", operator: "neq", value: "In Sync" },
+      ],
+    },
+    actionId: "resync_subtitles",
+    riskLevel: "AUTONOMOUS",
     createdAt: SEEDED_AT,
   },
 ];

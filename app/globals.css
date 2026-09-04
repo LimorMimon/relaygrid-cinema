@@ -36,6 +36,14 @@
      a human-approved one at a glance. */
   --color-auto: #9d8cff;
   --color-auto-soft: #1d1a33;
+
+  /* Healthy/confirmed-good status specifically — a true green, deliberately
+     distinct from --color-signal (teal), which is reserved for "Rerouted"
+     and doubles as the app's general live/brand accent (header, buttons,
+     focus rings). Keeps "this row has zero issues" from reading as just
+     another UI accent color. */
+  --color-good: #3ecf6e;
+  --color-good-soft: #10261a;
 }
 
 html,
