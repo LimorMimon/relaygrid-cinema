@@ -8,8 +8,10 @@ sent anywhere automatically.
 
 - [ ] **3-Minute Trailer (Demo Video)** — required, not recorded yet. Upload to YouTube or
       Vimeo (public, English or English subtitles) and paste the link below.
-- [ ] **Partner Track** — mandatory selection (IBM / Grafana Labs / Parallel / ClickHouse /
-      Replit) with real runtime integration in the code. Not chosen or integrated yet.
+- [x] **Partner Track** — ClickHouse, with real runtime integration: `lib/partner-mcp.ts`
+      spawns the official `mcp-clickhouse` MCP server and writes every sponsor event into a
+      real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
+      — it's marked "Live", not "Simulated"). Grafana and Replit remain simulated previews.
 - [ ] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — the app currently
       calls the public Gemini API directly (`lib/agent-backends/gemini-direct.ts`), not
       through Agent Builder. `lib/agent-backends/agent-builder.ts` is the seam for this but
@@ -23,7 +25,7 @@ Submitting before these are done risks disqualification on "Technological Implem
 - **Live app:** https://relaygrid-cinema.vercel.app
 - **Public source:** https://github.com/LimorMimon/relaygrid-cinema
 - **Demo video:** _(not recorded yet)_
-- **Partner track:** _(not yet selected)_
+- **Partner track:** ClickHouse (real runtime integration — `lib/partner-mcp.ts`)
 
 ## One-line summary
 
@@ -123,11 +125,12 @@ exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
 ## What's next
 
 Wire `lib/agent-backends/agent-builder.ts` to a real Google Cloud Agent Builder / Gemini
-Enterprise Agent Platform integration, and `lib/partner-mcp.ts` to a chosen Partner Track's
-MCP server (Grafana Labs is a natural fit for streaming telemetry) — both are seams that
-were built into the architecture from the start specifically so this swap wouldn't require
-touching the UI, the domain engine, or the tool layer. Then implement the second domain
-(Healthcare/Radiology worklist) that this engine was designed to support.
+Enterprise Agent Platform integration — a seam that was built into the architecture from
+the start specifically so this swap wouldn't require touching the UI, the domain engine, or
+the tool layer. `lib/partner-mcp.ts` has the same seam already proven out for ClickHouse;
+adding a real Grafana client behind it is the same shape of work, not a new pattern. Then
+implement the second domain (Healthcare/Radiology worklist) that this engine was designed
+to support.
 
 Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
 AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator
