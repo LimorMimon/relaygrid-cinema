@@ -20,6 +20,7 @@ import { ReportsPanel } from "@/components/reports-panel";
 import { PolicyRulesPanel } from "@/components/policy-rules-panel";
 import { SponsorIntegrations } from "@/components/sponsor-integrations";
 import { useGridAgent, type PolicyOptions, type PreviewState, type ReportingOptions } from "@/hooks/use-grid-agent";
+import { ingestSponsorEventRemote, publishSponsorEvent } from "@/lib/sponsor-event-bus";
 import {
   cinemaDomain,
   resolveCinemaPolicyRule,
@@ -93,9 +94,39 @@ export default function CinemaGridApp() {
     if (outcome.ok) setSuggestions((outcome.result as { suggestions: PolicySuggestion<StreamRecord>[] }).suggestions);
   }
 
+  /**
+   * The incident itself is published as its own sponsor event, independent
+   * of whatever the policy engine decides to do about it. Without this, an
+   * incident that only matches a REQUIRES_APPROVAL rule (or, worse, one that
+   * lands while another approval card is already pending and so gets
+   * silently skipped — see the policy-escalation effect in
+   * use-grid-agent.ts) would never appear in the Integrations tabs, making
+   * "Inject Incident" look like it did nothing at all.
+   */
   function handleInjectIncident() {
     const result = injectIncident(injectRandomIncident);
-    chatRef.current?.logSimulatedEvent("error" in result ? `🎲 ${result.error}` : `🎲 ${result.summary}`);
+    if ("error" in result) {
+      chatRef.current?.logSimulatedEvent(`🎲 ${result.error}`);
+      return;
+    }
+    chatRef.current?.logSimulatedEvent(`🎲 ${result.summary}`);
+    const record = result.records.find((r) => r.id === result.changedId);
+    ingestSponsorEventRemote(
+      publishSponsorEvent({
+        kind: "incident_injected",
+        source: "human",
+        summary: result.summary,
+        payload: {
+          recordId: result.changedId,
+          channel: record?.channel,
+          audioStatus: record?.audioStatus,
+          subtitleSync: record?.subtitleSync,
+          bitrateMbps: record?.bitrateMbps,
+          status: record?.status,
+          statusFlags: record?.statusFlags,
+        },
+      }),
+    );
   }
 
   function addSuggestedRule(key: string) {

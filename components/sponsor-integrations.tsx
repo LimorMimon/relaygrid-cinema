@@ -96,9 +96,16 @@ function GrafanaTab({ events }: { events: SponsorEvent[] }) {
   );
 }
 
-/** The Kind column has only ~60px to work with — this project's two event kinds spelled out ("action_executed") wouldn't leave room for Summary, so the badge shows a short label while `e.kind` itself (unabbreviated) stays in the tooltip and the expanded payload. */
+/** The Kind column has only ~60px to work with — this project's event kinds spelled out ("action_executed") wouldn't leave room for Summary, so the badge shows a short label while `e.kind` itself (unabbreviated) stays in the tooltip and the expanded payload. */
 function kindLabel(kind: SponsorEvent["kind"]): string {
-  return kind === "action_executed" ? "Action" : "Rule added";
+  switch (kind) {
+    case "action_executed":
+      return "Action";
+    case "policy_rule_added":
+      return "Rule added";
+    case "incident_injected":
+      return "Incident";
+  }
 }
 
 /**
