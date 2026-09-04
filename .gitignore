@@ -23,3 +23,4 @@ dist/
 
 .vercel
 .env*
+.mcp-clickhouse-venv/
