@@ -29,13 +29,20 @@ The engine (`lib/grid-engine.ts`, `lib/domains/types.ts`, `lib/mcp-tools.ts`) kn
 
 ## Getting started
 
-```bash
-npm install
-cp .env.local.example .env.local   # add your GEMINI_API_KEY (https://aistudio.google.com/apikey)
-npm run dev
-```
+The hosted app (link above) already has a Gemini key configured server-side — you don't
+need your own key just to try it. Your own key is only needed to run the repo **locally**:
 
-Open http://localhost:3000. The **Judge Demo Guide** on the right walks through the headline scenario step by step — each step has a "Send to chat" button that fires the exact prompt.
+1. `npm install`
+2. `cp .env.local.example .env.local` — this creates a new `.env.local` file in the project root.
+3. Open `.env.local` and paste your key on the `GEMINI_API_KEY=` line, e.g.:
+   ```
+   GEMINI_API_KEY=AIzaSy...your-key-here
+   ```
+   Get a free key at https://aistudio.google.com/apikey. `.env.local` is git-ignored, so it
+   never gets committed.
+4. `npm run dev`, then open http://localhost:3000.
+
+The **Judge Demo Guide** on the right walks through the headline scenario step by step — each step has a "Send to chat" button that fires the exact prompt, or use **Run full scenario** to drive steps 1–3 automatically.
 
 ## Project layout
 

@@ -84,6 +84,10 @@ four steps manually with the **Send to chat** buttons. When the action card appe
 around. `STREAM-CDN-804` is a deterministic seeded incident record, so the scenario is
 reproducible on every session.
 
+No Gemini key is needed to test the live app — it's already configured server-side. A key
+is only needed to run the repo locally instead; see "Getting started" in `README.md` for
+exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
+
 ## What's next
 
 Wire `lib/agent-backends/agent-builder.ts` to a real Google Cloud Agent Builder / Gemini
