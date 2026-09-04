@@ -47,6 +47,7 @@ import {
   type ToolHandlers,
 } from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
+import { publishSponsorEvent } from "@/lib/sponsor-event-bus";
 
 export type PreviewState<TRecord, TActionId extends string> = {
   id: string;
@@ -269,6 +270,21 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         setRecentlyChangedIds(new Set(changedIds));
         setPreview(null);
         setAgentNotice(null);
+        if (changed > 0) {
+          publishSponsorEvent({
+            kind: "action_executed",
+            source: "human",
+            summary: `${actionLabels} · ${changed} changed · ${s.preview.plan.length - changed} unchanged`,
+            payload: {
+              actions: s.preview.actions,
+              requestSummary: s.preview.requestSummary,
+              recordIds: changedIds,
+              changed,
+              unchanged: s.preview.plan.length - changed,
+              approvedBy: "human",
+            },
+          });
+        }
         return {
           actions: s.preview.actions,
           changed,
@@ -305,6 +321,19 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
           policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
         }
+        publishSponsorEvent({
+          kind: "policy_rule_added",
+          source: "rule",
+          summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
+          payload: {
+            ruleId: resolved.id,
+            ruleNumber,
+            description: resolved.description,
+            riskLevel: resolved.riskLevel,
+            actionId: resolved.actionId,
+            validationOk: validation.ok,
+          },
+        });
         return {
           ruleId: resolved.id,
           description: resolved.description,
@@ -342,6 +371,19 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
           policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
         }
+        publishSponsorEvent({
+          kind: "policy_rule_added",
+          source: "rule",
+          summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
+          payload: {
+            ruleId: resolved.id,
+            ruleNumber,
+            description: resolved.description,
+            riskLevel: resolved.riskLevel,
+            actionId: resolved.actionId,
+            validationOk: validation.ok,
+          },
+        });
         // Computed here (not via a separate suggest_policy_rules call) so the caller
         // gets the post-add list without racing React's async state commit.
         const remainingSuggestions = policyOptions.listSuggestions?.(s.records, nextRules) ?? [];
@@ -442,6 +484,21 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       autoMessages.push(
         `⚡ Auto-executed: ${actionLabel} for ${changed.map((steps) => steps[0].recordId).join(", ")} via Policy Rule #${ruleNumber} (${rule.description}).`,
       );
+      publishSponsorEvent({
+        kind: "action_executed",
+        source: "policy",
+        summary: `${actionLabel} (policy #${ruleNumber}) · ${changed.length} changed`,
+        payload: {
+          actionId: rule.actionId,
+          ruleId: rule.id,
+          ruleNumber,
+          ruleDescription: rule.description,
+          recordIds: changed.map((steps) => steps[0].recordId),
+          changed: changed.length,
+          unchanged: plan.length - changed.length,
+          approvedBy: "policy",
+        },
+      });
     }
 
     if (auditEntries.length > 0) {

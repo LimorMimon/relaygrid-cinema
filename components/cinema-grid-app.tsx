@@ -9,7 +9,7 @@
  * here is reusable across domains on purpose.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, Clapperboard, Database, Dices, MousePointerClick, RotateCcw, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, Clapperboard, Database, Dices, MousePointerClick, Plug, RotateCcw, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RelayGrid } from "@/components/relay-grid";
@@ -18,6 +18,7 @@ import { AgentChatPanel, type AgentChatPanelHandle } from "@/components/agent-ch
 import { JudgeGuide, GUIDE_STEPS } from "@/components/judge-guide";
 import { ReportsPanel } from "@/components/reports-panel";
 import { PolicyRulesPanel } from "@/components/policy-rules-panel";
+import { SponsorIntegrations } from "@/components/sponsor-integrations";
 import { useGridAgent, type PolicyOptions, type PreviewState, type ReportingOptions } from "@/hooks/use-grid-agent";
 import {
   cinemaDomain,
@@ -39,7 +40,7 @@ export default function CinemaGridApp() {
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
-  const [middleTab, setMiddleTab] = useState<"guide" | "reports" | "policies">("guide");
+  const [middleTab, setMiddleTab] = useState<"guide" | "reports" | "policies" | "integrations">("guide");
   const chatRef = useRef<AgentChatPanelHandle>(null);
 
   const policyOptions = useMemo<PolicyOptions<StreamRecord, CinemaActionId>>(
@@ -269,11 +270,18 @@ export default function CinemaGridApp() {
             default *selected* tab stays "guide" below (still the intended
             landing point for a judge) regardless of this button order.
           */}
-          <div className="flex shrink-0 gap-1 rounded border border-line bg-panel p-1">
+          {/*
+            2x2 grid, not a single row — a 4th flex-1 tab (Integrations)
+            no longer fits one row at this column's narrowest width
+            (min 300px at desktop), and the resulting overflow forced the
+            whole sticky panel to scroll horizontally, clipping content.
+            A grid sidesteps the fit problem entirely at every breakpoint.
+          */}
+          <div className="grid shrink-0 grid-cols-2 gap-1 rounded border border-line bg-panel p-1">
             <button
               type="button"
               onClick={() => setMiddleTab("policies")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+              className={`flex items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
                 middleTab === "policies" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
               }`}
             >
@@ -292,7 +300,7 @@ export default function CinemaGridApp() {
             <button
               type="button"
               onClick={() => setMiddleTab("guide")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+              className={`flex items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
                 middleTab === "guide" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
               }`}
             >
@@ -302,7 +310,7 @@ export default function CinemaGridApp() {
             <button
               type="button"
               onClick={() => setMiddleTab("reports")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+              className={`flex items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
                 middleTab === "reports" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
               }`}
             >
@@ -317,6 +325,16 @@ export default function CinemaGridApp() {
                   {savedReportSpecs.length}
                 </span>
               )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMiddleTab("integrations")}
+              className={`flex items-center justify-center gap-1.5 rounded px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                middleTab === "integrations" ? "bg-signal text-void" : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              <Plug className="size-3.5" />
+              Integrations
             </button>
           </div>
 
@@ -338,8 +356,10 @@ export default function CinemaGridApp() {
               onAutoRun={runFullScenario}
               autoRunning={autoRunning}
             />
-          ) : (
+          ) : middleTab === "reports" ? (
             <ReportsPanel reports={reports} savedReportSpecs={savedReportSpecs} />
+          ) : (
+            <SponsorIntegrations />
           )}
           {preview && <ActionCard preview={preview} busy={executing} onApprove={handleApprove} onDismiss={dismissPreview} />}
         </aside>
