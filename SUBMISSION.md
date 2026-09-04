@@ -83,10 +83,25 @@ replaced by a Google Cloud Agent Builder backend later without touching the UI o
 layer. The UI is a three-column split screen (grid / judge guide + action card / agent
 chat) that reflows to two columns on tablets and one on phones.
 
+Policy-rule *authoring* is natural language; policy-rule *execution* deliberately isn't.
+`add_policy_rule` takes a plain-English request and Gemini's function call resolves it into
+a fixed, typed condition (`resolveCinemaPolicyRule`) — every future match against that rule
+runs through the same deterministic `matches()` the rest of `grid-engine.ts` already uses,
+with no further model call. A rule the model could silently reinterpret differently between
+runs isn't something you can safely wire to real infrastructure, so once a rule exists it
+behaves exactly like hand-written code — reproducible and auditable, not "elastic." The
+honest trade-off today: the natural-language grammar only accepts one flat condition (a
+single field/operator/threshold), not the full AND/OR/NOT trees `grid-engine.ts` already
+supports for hand-authored rules (see the compound conditions in `DEFAULT_POLICY_RULES`) —
+widening that grammar so an operator's own compound, context-aware rules reach the same
+engine is the natural next step, not a re-architecture.
+
 ## Accomplishments
 
 - Six MCP tools shared identically between native WebMCP and an in-app Gemini chat loop.
 - Structural safety: the execute step is unreachable by the model, only by a human click.
+- Natural-language rule authoring that compiles to a fixed, deterministic condition — no
+  hidden model re-interpretation once a policy rule is live.
 - Domain-agnostic query/action engine, proven with one domain and designed for a second.
 - A one-click, repeatable, judge-facing demo path with live progress tracking.
 - A distinctive "master control room" UI (IBM Plex Mono/Sans, phosphor-teal status system)
@@ -113,3 +128,11 @@ MCP server (Grafana Labs is a natural fit for streaming telemetry) — both are 
 were built into the architecture from the start specifically so this swap wouldn't require
 touching the UI, the domain engine, or the tool layer. Then implement the second domain
 (Healthcare/Radiology worklist) that this engine was designed to support.
+
+Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
+AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator
+can register something like "be more sensitive to quality drops on premium Sunday
+broadcasts than on night reruns" directly from chat. Separately, a genuinely new engine
+capability — staged, timed remediation ("try a lighter fix first; escalate only if it
+hasn't helped within N seconds") — would need real state tracking per record across ticks,
+which the current stateless-per-tick evaluator doesn't have yet.
