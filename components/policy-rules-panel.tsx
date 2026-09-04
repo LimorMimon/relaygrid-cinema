@@ -1,10 +1,10 @@
 "use client";
 /**
  * "Policies" tab: Active sub-tab (compose-a-rule input + the numbered
- * active-rule list, highlighting whichever rule currently has a pending
+ * active-rule list, highlighting every rule that currently has a pending
  * action card) and Suggested sub-tab (candidate rules computed from real
  * current data, each addable with one click). All state — policyRules,
- * suggestions, which rule is pending — lives in the parent
+ * suggestions, which rules are pending — lives in the parent
  * (cinema-grid-app.tsx) and the hook; this component only renders it.
  */
 import { useEffect, useMemo, useState } from "react";
@@ -47,7 +47,7 @@ export function PolicyRulesPanel({
   suggestions,
   onAddSuggestion,
   onRefreshSuggestions,
-  pendingRuleId,
+  pendingRuleIds,
   records,
 }: {
   policyRules: PolicyRule<StreamRecord, CinemaActionId>[];
@@ -55,8 +55,8 @@ export function PolicyRulesPanel({
   suggestions: PolicySuggestion<StreamRecord>[];
   onAddSuggestion: (key: string) => void;
   onRefreshSuggestions: () => void;
-  /** The rule currently asking for approval via a live action card, if any — highlighted in the Active list. */
-  pendingRuleId?: string;
+  /** Every rule currently asking for approval via a live action card, if any — each highlighted in the Active list. */
+  pendingRuleIds?: Set<string>;
   /** Live records — lets the flowchart modal's "Validate Logic" button test a rule against real current data. */
   records: StreamRecord[];
 }) {
@@ -69,8 +69,8 @@ export function PolicyRulesPanel({
 
   // Bring the highlighted rule into view the moment it starts asking for approval.
   useEffect(() => {
-    if (pendingRuleId) setSubTab("active");
-  }, [pendingRuleId]);
+    if (pendingRuleIds && pendingRuleIds.size > 0) setSubTab("active");
+  }, [pendingRuleIds]);
 
   // Which decision ladder (if any) a given active rule belongs to — lets the
   // flowchart button open the combined if/else diagram instead of a
@@ -220,7 +220,7 @@ export function PolicyRulesPanel({
               ) : (
                 <ul className="divide-y divide-line">
                   {visibleRules.map(({ rule, index: i, logicLines, ladder }) => {
-                    const isPending = rule.id === pendingRuleId;
+                    const isPending = pendingRuleIds?.has(rule.id) ?? false;
                     return (
                       <li
                         key={rule.id}

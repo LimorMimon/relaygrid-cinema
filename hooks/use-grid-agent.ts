@@ -47,7 +47,7 @@ import {
   type ToolHandlers,
 } from "@/lib/mcp-tools";
 import type { DomainConfig } from "@/lib/domains/types";
-import { publishSponsorEvent } from "@/lib/sponsor-event-bus";
+import { ingestSponsorEventRemote, publishSponsorEvent } from "@/lib/sponsor-event-bus";
 
 export type PreviewState<TRecord, TActionId extends string> = {
   id: string;
@@ -109,7 +109,10 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   const [records, setRecords] = useState<TRecord[]>(initial);
   const [query, setQuery] = useState<QuerySpec<TRecord> | null>(null);
   const [queryHistory, setQueryHistory] = useState<QuerySpec<TRecord>[]>([]);
-  const [preview, setPreview] = useState<PreviewState<TRecord, TActionId> | null>(null);
+  // A list, not a single slot: several REQUIRES_APPROVAL matches — from the
+  // policy loop, or a chat-requested preview_action — can be pending review
+  // at once. Each is keyed by its own id, approved/dismissed independently.
+  const [previews, setPreviews] = useState<PreviewState<TRecord, TActionId>[]>([]);
   const [audit, setAudit] = useState<AuditEntry<TRecord, TActionId>[]>([]);
   const [selected, setSelected] = useState<TRecord | null>(null);
   const [agentNotice, setAgentNotice] = useState<AgentNotice | null>(null);
@@ -146,10 +149,10 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   }, [results, domain.batchSize, recentlyChangedIds]);
   const fieldNames = useMemo(() => new Set(domain.fields.map((f) => f.key)), [domain]);
 
-  const live = useRef({ records, query, results, preview, audit, domain, policyRules });
+  const live = useRef({ records, query, results, previews, audit, domain, policyRules });
   useEffect(() => {
-    live.current = { records, query, results, preview, audit, domain, policyRules };
-  }, [records, query, results, preview, audit, domain, policyRules]);
+    live.current = { records, query, results, previews, audit, domain, policyRules };
+  }, [records, query, results, previews, audit, domain, policyRules]);
 
   const reject = useCallback((request: string, message: string): never => {
     setAgentNotice({ request, message });
@@ -190,7 +193,10 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           if (current) setQueryHistory((h) => [current, ...h].slice(0, 5));
           return q;
         });
-        setPreview(null);
+        // Only drop the ad-hoc chat-requested preview (its plan/batch is tied
+        // to the query that's about to change) — policy-escalated previews
+        // don't depend on the active filter, so they stay pending.
+        setPreviews((prev) => prev.filter((p) => p.triggeredByRuleId !== undefined));
         setSelected(null);
         setAgentNotice(null);
         return { matched: runQuery(s.records, q).length, query: q };
@@ -220,7 +226,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           requestSummary: input.requestSummary,
           plan,
         };
-        setPreview(p);
+        setPreviews((prev) => [...prev, p]);
         setAgentNotice(null);
         const changed = plan.filter((steps) => steps.some((step) => step.allowed));
         return {
@@ -239,56 +245,59 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       },
       execute_action: (input) => {
         const s = live.current;
-        if (!s.preview || s.preview.id !== input.previewId) {
+        const target = s.previews.find((p) => p.id === input.previewId);
+        if (!target) {
           return reject("Execute action", "Preview is missing or stale. Create a new preview before execution.");
         }
         if (!input.humanConfirmed) {
           return reject("Execute action", "Explicit human confirmation is required before execution.");
         }
         const before = s.records;
-        const nextRecords = applyActionPlan(s.records, s.preview.plan);
+        const nextRecords = applyActionPlan(s.records, target.plan);
         setRecords(nextRecords);
-        const changedSteps = s.preview.plan.filter((steps) => steps.some((step) => step.allowed));
+        const changedSteps = target.plan.filter((steps) => steps.some((step) => step.allowed));
         const changed = changedSteps.length;
         const changedIds = changedSteps.map((steps) => steps[0].recordId);
-        const actionLabels = s.preview.actions
+        const actionLabels = target.actions
           .map((id) => s.domain.actions.find((a) => a.id === id)?.label ?? id)
           .join(" + ");
         setAudit((x) => [
           {
             id: `audit-${Date.now()}`,
-            label: `${actionLabels} · ${changed} changed · ${s.preview!.plan.length - changed} unchanged`,
+            label: `${actionLabels} · ${changed} changed · ${target.plan.length - changed} unchanged`,
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             timestamp: Date.now(),
             before,
             changedRecordIds: changedIds,
-            actionIds: s.preview!.actions,
+            actionIds: target.actions,
             source: "human",
           },
           ...x,
         ]);
         setRecentlyChangedIds(new Set(changedIds));
-        setPreview(null);
+        setPreviews((prev) => prev.filter((p) => p.id !== target.id));
         setAgentNotice(null);
         if (changed > 0) {
-          publishSponsorEvent({
-            kind: "action_executed",
-            source: "human",
-            summary: `${actionLabels} · ${changed} changed · ${s.preview.plan.length - changed} unchanged`,
-            payload: {
-              actions: s.preview.actions,
-              requestSummary: s.preview.requestSummary,
-              recordIds: changedIds,
-              changed,
-              unchanged: s.preview.plan.length - changed,
-              approvedBy: "human",
-            },
-          });
+          ingestSponsorEventRemote(
+            publishSponsorEvent({
+              kind: "action_executed",
+              source: "human",
+              summary: `${actionLabels} · ${changed} changed · ${target.plan.length - changed} unchanged`,
+              payload: {
+                actions: target.actions,
+                requestSummary: target.requestSummary,
+                recordIds: changedIds,
+                changed,
+                unchanged: target.plan.length - changed,
+                approvedBy: "human",
+              },
+            }),
+          );
         }
         return {
-          actions: s.preview.actions,
+          actions: target.actions,
           changed,
-          unchanged: s.preview.plan.length - changed,
+          unchanged: target.plan.length - changed,
           remainingMatches: s.query ? runQuery(nextRecords, s.query).length : 0,
           auditCreated: true,
         };
@@ -321,19 +330,21 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
           policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
         }
-        publishSponsorEvent({
-          kind: "policy_rule_added",
-          source: "rule",
-          summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
-          payload: {
-            ruleId: resolved.id,
-            ruleNumber,
-            description: resolved.description,
-            riskLevel: resolved.riskLevel,
-            actionId: resolved.actionId,
-            validationOk: validation.ok,
-          },
-        });
+        ingestSponsorEventRemote(
+          publishSponsorEvent({
+            kind: "policy_rule_added",
+            source: "rule",
+            summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
+            payload: {
+              ruleId: resolved.id,
+              ruleNumber,
+              description: resolved.description,
+              riskLevel: resolved.riskLevel,
+              actionId: resolved.actionId,
+              validationOk: validation.ok,
+            },
+          }),
+        );
         return {
           ruleId: resolved.id,
           description: resolved.description,
@@ -371,19 +382,21 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
           const problems = validation.findings.filter((f) => f.severity === "error").map((f) => f.message).join(" ");
           policyOptions.onRuleWarning?.(`⚠ Policy Rule #${ruleNumber} ("${resolved.description}") may not behave as expected — ${problems}`);
         }
-        publishSponsorEvent({
-          kind: "policy_rule_added",
-          source: "rule",
-          summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
-          payload: {
-            ruleId: resolved.id,
-            ruleNumber,
-            description: resolved.description,
-            riskLevel: resolved.riskLevel,
-            actionId: resolved.actionId,
-            validationOk: validation.ok,
-          },
-        });
+        ingestSponsorEventRemote(
+          publishSponsorEvent({
+            kind: "policy_rule_added",
+            source: "rule",
+            summary: `Policy Rule #${ruleNumber} added: ${resolved.description}`,
+            payload: {
+              ruleId: resolved.id,
+              ruleNumber,
+              description: resolved.description,
+              riskLevel: resolved.riskLevel,
+              actionId: resolved.actionId,
+              validationOk: validation.ok,
+            },
+          }),
+        );
         // Computed here (not via a separate suggest_policy_rules call) so the caller
         // gets the post-add list without racing React's async state commit.
         const remainingSuggestions = policyOptions.listSuggestions?.(s.records, nextRules) ?? [];
@@ -484,21 +497,23 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       autoMessages.push(
         `⚡ Auto-executed: ${actionLabel} for ${changed.map((steps) => steps[0].recordId).join(", ")} via Policy Rule #${ruleNumber} (${rule.description}).`,
       );
-      publishSponsorEvent({
-        kind: "action_executed",
-        source: "policy",
-        summary: `${actionLabel} (policy #${ruleNumber}) · ${changed.length} changed`,
-        payload: {
-          actionId: rule.actionId,
-          ruleId: rule.id,
-          ruleNumber,
-          ruleDescription: rule.description,
-          recordIds: changed.map((steps) => steps[0].recordId),
-          changed: changed.length,
-          unchanged: plan.length - changed.length,
-          approvedBy: "policy",
-        },
-      });
+      ingestSponsorEventRemote(
+        publishSponsorEvent({
+          kind: "action_executed",
+          source: "policy",
+          summary: `${actionLabel} (policy #${ruleNumber}) · ${changed.length} changed`,
+          payload: {
+            actionId: rule.actionId,
+            ruleId: rule.id,
+            ruleNumber,
+            ruleDescription: rule.description,
+            recordIds: changed.map((steps) => steps[0].recordId),
+            changed: changed.length,
+            unchanged: plan.length - changed.length,
+            approvedBy: "policy",
+          },
+        }),
+      );
     }
 
     if (auditEntries.length > 0) {
@@ -508,34 +523,39 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       autoMessages.forEach((message) => policyOptions?.onAutoExecuted?.(message));
     }
 
-    // Escalate at most one new match per tick, and never clobber a preview
-    // that's already pending review (chat-triggered or policy-triggered).
-    if (!live.current.preview) {
-      for (const rule of approvalRules) {
-        const ruleNumber = policyRules.indexOf(rule) + 1;
-        const matched = evaluatePolicyRules(working, [rule])[0].matches.slice(0, domain.batchSize);
-        if (matched.length === 0) continue;
-        const plan = buildActionPlan(matched, [rule.actionId], domain.planAction);
-        const changed = plan.filter((steps) => steps.some((step) => step.allowed));
-        if (changed.length === 0) continue;
+    // Escalate at most one NEW card per tick — but "new" now means "not
+    // already covered by a pending preview," not "no preview exists at all."
+    // Several approval cards can be pending together; a record already on
+    // one of them is skipped so the same fault never gets a duplicate card
+    // on a later tick (e.g. the next Inject Incident click re-runs this
+    // effect for an unrelated record and would otherwise re-match it).
+    const alreadyPendingIds = new Set(live.current.previews.flatMap((p) => p.plan.map((steps) => steps[0]?.recordId)));
+    for (const rule of approvalRules) {
+      const ruleNumber = policyRules.indexOf(rule) + 1;
+      const matched = evaluatePolicyRules(working, [rule])[0].matches
+        .filter((record) => !alreadyPendingIds.has(record.id))
+        .slice(0, domain.batchSize);
+      if (matched.length === 0) continue;
+      const plan = buildActionPlan(matched, [rule.actionId], domain.planAction);
+      const changed = plan.filter((steps) => steps.some((step) => step.allowed));
+      if (changed.length === 0) continue;
 
-        const p: PreviewState<TRecord, TActionId> = {
-          id: `preview-policy-${rule.id}-${Date.now()}`,
-          actions: [rule.actionId],
-          requestSummary: `Policy Rule #${ruleNumber}: ${rule.description}`,
-          plan,
-          triggeredByRuleId: rule.id,
-        };
-        setPreview(p);
-        const actionLabel = domain.actions.find((a) => a.id === rule.actionId)?.label ?? String(rule.actionId);
-        policyOptions?.onEscalated?.(
-          `🛎 Policy Rule #${ruleNumber} flagged ${changed.length} stream(s) for "${actionLabel}" — review the action card to approve.`,
-        );
-        break;
-      }
+      const p: PreviewState<TRecord, TActionId> = {
+        id: `preview-policy-${rule.id}-${Date.now()}`,
+        actions: [rule.actionId],
+        requestSummary: `Policy Rule #${ruleNumber}: ${rule.description}`,
+        plan,
+        triggeredByRuleId: rule.id,
+      };
+      setPreviews((prev) => [...prev, p]);
+      const actionLabel = domain.actions.find((a) => a.id === rule.actionId)?.label ?? String(rule.actionId);
+      policyOptions?.onEscalated?.(
+        `🛎 Policy Rule #${ruleNumber} flagged ${changed.length} stream(s) for "${actionLabel}" — review the action card to approve.`,
+      );
+      break;
     }
     // Re-runs whenever the grid or the active rule set changes; intentionally
-    // not re-run on preview/audit alone (read via the `live` ref instead).
+    // not re-run on previews/audit alone (read via the `live` ref instead).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, policyRules, domain, policyOptions]);
 
@@ -551,7 +571,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     [dispatch],
   );
 
-  const dismissPreview = useCallback(() => setPreview(null), []);
+  const dismissPreview = useCallback((id: string) => setPreviews((prev) => prev.filter((p) => p.id !== id)), []);
 
   /**
    * Demo-tooling escape hatch — deliberately NOT an MCP tool. Applies a
@@ -577,7 +597,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     setRecords(initial);
     setQuery(null);
     setQueryHistory([]);
-    setPreview(null);
+    setPreviews([]);
     setAudit([]);
     setSelected(null);
     setAgentNotice(null);
@@ -593,7 +613,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     visibleBatch,
     query,
     queryHistory,
-    preview,
+    previews,
     audit,
     selected,
     setSelected,

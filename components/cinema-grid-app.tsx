@@ -39,7 +39,9 @@ const systemInstruction = buildSystemInstruction(cinemaDomain);
 
 export default function CinemaGridApp() {
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
-  const [executing, setExecuting] = useState(false);
+  // Which pending preview's Approve & Execute button is mid-click, if any —
+  // several cards can be on screen at once, so this can't be a single flag.
+  const [executingId, setExecutingId] = useState<string | null>(null);
   const [autoRunning, setAutoRunning] = useState(false);
   const [middleTab, setMiddleTab] = useState<"guide" | "reports" | "policies" | "integrations">("guide");
   const chatRef = useRef<AgentChatPanelHandle>(null);
@@ -69,7 +71,7 @@ export default function CinemaGridApp() {
     results,
     visibleBatch,
     query,
-    preview,
+    previews,
     audit,
     selected,
     setSelected,
@@ -97,11 +99,9 @@ export default function CinemaGridApp() {
   /**
    * The incident itself is published as its own sponsor event, independent
    * of whatever the policy engine decides to do about it. Without this, an
-   * incident that only matches a REQUIRES_APPROVAL rule (or, worse, one that
-   * lands while another approval card is already pending and so gets
-   * silently skipped — see the policy-escalation effect in
-   * use-grid-agent.ts) would never appear in the Integrations tabs, making
-   * "Inject Incident" look like it did nothing at all.
+   * incident that only matches a REQUIRES_APPROVAL rule wouldn't appear in
+   * the Integrations tabs until a human clicks Approve & Execute on the
+   * resulting card — "Inject Incident" would look like it did nothing.
    */
   function handleInjectIncident() {
     const result = injectIncident(injectRandomIncident);
@@ -150,7 +150,14 @@ export default function CinemaGridApp() {
   // the system's own risk clamp (lib/domains/cinema.ts) before it can run
   // without a human confirming anything.
   const chatTools = useMemo(() => geminiTools.filter((t) => t.name !== "execute_action"), [geminiTools]);
-  const pendingIds = useMemo(() => new Set((preview?.plan ?? []).map((steps) => steps[0]?.recordId)), [preview]);
+  const pendingIds = useMemo(
+    () => new Set(previews.flatMap((p) => p.plan.map((steps) => steps[0]?.recordId))),
+    [previews],
+  );
+  const pendingRuleIds = useMemo(
+    () => new Set(previews.map((p) => p.triggeredByRuleId).filter((id): id is string => id !== undefined)),
+    [previews],
+  );
 
   const stats = [
     { label: "All streams", value: records.length.toLocaleString(), icon: Database },
@@ -160,14 +167,13 @@ export default function CinemaGridApp() {
     { label: "Active policies", value: policyRules.length.toLocaleString(), icon: Zap },
   ];
 
-  const completedSteps = audit.length > 0 ? 4 : preview ? 3 : selected ? 2 : query ? 1 : 0;
+  const completedSteps = audit.length > 0 ? 4 : previews.length > 0 ? 3 : selected ? 2 : query ? 1 : 0;
 
-  function executeAction(target: PreviewState<StreamRecord, CinemaActionId> | null) {
-    if (!target) return;
-    setExecuting(true);
+  function executeAction(target: PreviewState<StreamRecord, CinemaActionId>) {
+    setExecutingId(target.id);
     const args = { previewId: target.id, humanConfirmed: true };
     const outcome = callTool("execute_action", args);
-    setExecuting(false);
+    setExecutingId(null);
     chatRef.current?.logToolResult("execute_action", args, outcome);
     if (!outcome.ok) {
       // Also surfaced via agentNotice by the handler itself when possible.
@@ -175,8 +181,8 @@ export default function CinemaGridApp() {
     }
   }
 
-  function handleApprove() {
-    executeAction(preview);
+  function handleApprove(target: PreviewState<StreamRecord, CinemaActionId>) {
+    executeAction(target);
   }
 
   async function runFullScenario() {
@@ -376,7 +382,7 @@ export default function CinemaGridApp() {
               suggestions={suggestions}
               onAddSuggestion={addSuggestedRule}
               onRefreshSuggestions={refreshSuggestions}
-              pendingRuleId={preview?.triggeredByRuleId}
+              pendingRuleIds={pendingRuleIds}
               records={records}
             />
           ) : middleTab === "guide" ? (
@@ -392,7 +398,15 @@ export default function CinemaGridApp() {
           ) : (
             <SponsorIntegrations />
           )}
-          {preview && <ActionCard preview={preview} busy={executing} onApprove={handleApprove} onDismiss={dismissPreview} />}
+          {previews.map((preview) => (
+            <ActionCard
+              key={preview.id}
+              preview={preview}
+              busy={executingId === preview.id}
+              onApprove={() => handleApprove(preview)}
+              onDismiss={() => dismissPreview(preview.id)}
+            />
+          ))}
         </aside>
 
         {/* Same reasoning as rg-area-guide above: h-full within its tablet grid row, absolute calc(100vh-4rem) once it owns a full desktop column. */}
