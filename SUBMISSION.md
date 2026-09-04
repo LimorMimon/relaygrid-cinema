@@ -31,10 +31,19 @@ Submitting before these are done risks disqualification on "Technological Implem
 
 ## Inspiration
 
-Streaming/CDN operators triage incidents by hand — cross-referencing bitrate, audio, and
-subtitle telemetry across hundreds of streams, then manually rerouting and restarting
-encoders. An agent can spot the pattern and propose the fix instantly; the risk is letting
-it also *apply* the fix without a human actually looking at what will change.
+Streaming/CDN infrastructure already does *some* self-healing — AWS Elemental MediaLive can
+auto-failover on audio loss, multi-CDN setups auto-reroute around a degraded network. But
+that automation is rigid and per-stream: a fixed threshold on one signal, no view of the
+fleet as a whole, and nothing you can question or reason with. The operator watching
+hundreds of streams still has to notice the pattern by hand — cross-referencing bitrate,
+audio, and subtitle telemetry across streams — before any of that automation even applies.
+
+RelayGrid Cinema isn't another rigid rule-based failover trigger. It's the reasoning layer
+*above* that infrastructure: an agent that understands the whole grid, investigates a fault
+in plain language, and turns raw telemetry into an explained, ready-to-approve fix instead
+of a fixed if-audio-silent-then-failover rule. The risk of an agent this capable is letting
+it also *apply* the fix without a human actually looking at what will change — which is why
+every mutating action stays behind an explicit human "Approve & Execute" click.
 
 ## What it does
 
