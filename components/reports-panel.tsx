@@ -17,31 +17,66 @@
  * and pinning is worth reading somewhere bigger than this sidebar.
  */
 import { useState } from "react";
-import { BarChart3, Play, Plus, Send, Sparkles } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronRight, Play, Plus, Send, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FlowchartModalShell } from "@/components/policy-flowchart";
 import type { ReportResult, ReportSpec, ReportSuggestion } from "@/lib/grid-engine";
 
-/** Horizontal single-hue bar list — rows are already sorted descending, so the biggest bucket reads first at a glance. */
+/**
+ * Horizontal single-hue bar list — rows are already sorted descending, so
+ * the biggest bucket reads first at a glance. Each row expands on click to
+ * the actual record ids in that group (row.recordIds) — a count on its own
+ * ("11 in EU-West") answers "how many," not "which ones."
+ */
 function ReportBars({ result }: { result: ReportResult }) {
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const max = result.rows[0]?.value ?? 0;
   return (
     <div className="space-y-2.5">
-      {result.rows.map((row) => (
-        <div key={row.group}>
-          <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-            <span className="truncate font-medium text-ink">{row.group}</span>
-            <span className="shrink-0 font-display tabular-nums text-ink-dim">{row.value}</span>
+      {result.rows.map((row) => {
+        const isOpen = openGroup === row.group;
+        return (
+          <div key={row.group}>
+            <button
+              type="button"
+              onClick={() => setOpenGroup(isOpen ? null : row.group)}
+              className="flex w-full items-center gap-1.5 text-left"
+              aria-expanded={isOpen}
+            >
+              {isOpen ? (
+                <ChevronDown className="size-3 shrink-0 text-ink-faint" />
+              ) : (
+                <ChevronRight className="size-3 shrink-0 text-ink-faint" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+                  <span className="truncate font-medium text-ink">{row.group}</span>
+                  <span className="shrink-0 font-display tabular-nums text-ink-dim">{row.value}</span>
+                </span>
+                <span className="block h-2 w-full overflow-hidden rounded-full bg-void-2">
+                  <span
+                    className="block h-full rounded-full bg-signal transition-[width]"
+                    style={{ width: `${max > 0 ? Math.max((row.value / max) * 100, 4) : 0}%` }}
+                  />
+                </span>
+              </span>
+            </button>
+            {isOpen && (
+              <div className="mb-1 ml-[18px] mt-1.5 flex flex-wrap gap-1">
+                {row.recordIds.map((id) => (
+                  <span
+                    key={id}
+                    className="rounded border border-line-bright bg-void-2 px-1.5 py-0.5 font-display text-[10px] text-ink-dim"
+                  >
+                    {id}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-void-2">
-            <div
-              className="h-full rounded-full bg-signal transition-[width]"
-              style={{ width: `${max > 0 ? Math.max((row.value / max) * 100, 4) : 0}%` }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -56,7 +91,9 @@ function ReportResultModal({ result, onClose }: { result: ReportResult; onClose:
       onClose={onClose}
     >
       <p className="font-display text-3xl font-semibold tabular-nums text-ink">{result.total}</p>
-      <p className="-mt-0.5 mb-4 text-[11px] text-ink-faint">matching records</p>
+      <p className="-mt-0.5 mb-4 text-[11px] text-ink-faint">
+        matching records total{result.rows.length > 0 ? " — click a group below to see which ones" : ""}
+      </p>
       {result.rows.length > 0 ? (
         <ReportBars result={result} />
       ) : (

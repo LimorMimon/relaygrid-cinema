@@ -413,7 +413,7 @@ export function resolveCinemaReport(
       .flatMap((entry) => entry.changedRecordIds)
       .map((id) => recordById.get(id))
       .filter((r): r is StreamRecord => Boolean(r));
-    const rows = groupAndCount(affected, (r) => String(r[groupField]));
+    const rows = groupAndCount(affected, (r) => String(r[groupField]), (r) => r.id);
     return { spec, rows, total: affected.length, generatedAt: new Date().toISOString() };
   }
 
@@ -427,7 +427,7 @@ export function resolveCinemaReport(
   }
 
   const matched = records.filter((r) => issueMetric.isIssue(r) && withinReportWindow(r.lastUpdated, timeWindow));
-  const rows = groupAndCount(matched, (r) => String(r[groupField]));
+  const rows = groupAndCount(matched, (r) => String(r[groupField]), (r) => r.id);
   return { spec, rows, total: matched.length, generatedAt: new Date().toISOString() };
 }
 

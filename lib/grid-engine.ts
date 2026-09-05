@@ -442,7 +442,8 @@ export type ReportSpec = {
   createdAt: string;
 };
 
-export type ReportRow = { group: string; value: number };
+/** recordIds is every id that landed in this group, not just its count — lets a viewer drill from "11 in EU-West" down to which 11. */
+export type ReportRow = { group: string; value: number; recordIds: string[] };
 
 export type ReportResult = {
   spec: ReportSpec;
@@ -463,14 +464,16 @@ export function withinReportWindow(isoOrEpoch: string | number, window: ReportTi
   return now - t <= REPORT_WINDOW_MS[window];
 }
 
-/** Groups items by a string key and counts each group, largest first. */
-export function groupAndCount<T>(items: T[], groupKey: (item: T) => string): ReportRow[] {
-  const counts = new Map<string, number>();
+/** Groups items by a string key, largest group first — each row keeps the ids of every item in it, not just the count, so a report can be drilled into. */
+export function groupAndCount<T>(items: T[], groupKey: (item: T) => string, idOf: (item: T) => string): ReportRow[] {
+  const groups = new Map<string, string[]>();
   for (const item of items) {
     const key = groupKey(item);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const ids = groups.get(key);
+    if (ids) ids.push(idOf(item));
+    else groups.set(key, [idOf(item)]);
   }
-  return Array.from(counts.entries())
-    .map(([group, value]) => ({ group, value }))
+  return Array.from(groups.entries())
+    .map(([group, recordIds]) => ({ group, value: recordIds.length, recordIds }))
     .sort((a, b) => b.value - a.value);
 }
