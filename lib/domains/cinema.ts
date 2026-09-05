@@ -559,6 +559,24 @@ export const DEFAULT_REPORT_SPECS: ReportSpec[] = [
     groupBy: "channel",
     createdAt: new Date(NOW).toISOString(),
   },
+  // Every REPORT_CATALOG suggestion below groups by cdn_provider — a fair
+  // question for an ops desk, but not the one a studio or producer actually
+  // asks after their premiere airs. They don't want to hear "EU-West had a
+  // rough night" — they want to know whether THEIR broadcast needed help to
+  // stay clean. Grouping auto-remediation counts by Channel / Program turns
+  // the audit trail into a per-title reliability record: "0 interventions"
+  // is something you can show a studio partner; "which CDN did the fixing"
+  // is not.
+  {
+    id: "report-default-auto-remediation-by-channel",
+    title: "Auto-remediations by Channel / Program (all time)",
+    rationale:
+      "A studio or producer asking \"did our premiere run clean\" cares about one number: how many times the system had to step in to keep their specific broadcast on air — not which infrastructure did the fixing. This turns the policy engine's audit trail into a per-title reliability record, the kind of thing you can actually hand a studio partner after the fact.",
+    timeWindow: "all",
+    metric: "auto_remediation_count",
+    groupBy: "channel",
+    createdAt: new Date(NOW).toISOString(),
+  },
 ];
 
 // --- Default policy rules ---------------------------------------------
