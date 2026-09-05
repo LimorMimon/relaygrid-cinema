@@ -48,7 +48,11 @@ export function ActionCard({
           </div>
         </div>
         {sample.length > 0 && (
-          <ul className="mt-3 max-h-40 space-y-1.5 overflow-y-auto">
+          // No max-height/scroll here on purpose — `sample` is always at most
+          // 2 entries (see the `.slice(0, 2)` above), so the list's natural
+          // height is already bounded; a fixed max-h just clipped those two
+          // entries into an unnecessary inner scrollbar.
+          <ul className="mt-3 space-y-1.5">
             {sample.map((steps) => (
               <li key={steps[0]?.recordId} className="rounded border border-line bg-void-2 px-2.5 py-1.5 text-xs">
                 <span className="font-display font-semibold text-signal">{steps[0]?.recordId}</span>
