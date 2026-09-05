@@ -192,7 +192,7 @@ export default function CinemaGridApp() {
       total: number;
       generatedAt: string;
     };
-    return {
+    const result: ReportResult = {
       spec: {
         id: r.reportId,
         title: r.title,
@@ -206,6 +206,11 @@ export default function CinemaGridApp() {
       total: r.total,
       generatedAt: r.generatedAt,
     };
+    // Direct calls (Add / Run Report) never go through a Gemini turn, so
+    // without this the transcript would only ever show the terse ⚙ tool-log
+    // line above — never the narrated breakdown a chat-typed report gets.
+    chatRef.current?.logReportSummary(result);
+    return result;
   }
 
   /** Suggested tab's "Add" — saves it, which is what moves it into Active on the next render (see listCinemaSuggestedReports's exclusion). */

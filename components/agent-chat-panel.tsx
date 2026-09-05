@@ -3,6 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GeminiFunctionDeclaration } from "@/lib/mcp-tools";
+import type { ReportResult } from "@/lib/grid-engine";
 
 type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
@@ -46,6 +47,21 @@ function summarizeToolCall(name: string, args: Record<string, unknown> | undefin
   }
 }
 
+/**
+ * The narrated breakdown Gemini would have typed out after a real
+ * function-calling turn — written here as a plain template instead, since
+ * "Add"/"Run Report" in the Reports tab call generate_analytics_report
+ * directly and never go through a Gemini turn at all (by design: an
+ * already-known report shouldn't cost a model call just to describe data
+ * the modal already shows in full). Without this, that path only ever left
+ * the terse ⚙ tool-log line in the transcript instead of a real summary.
+ */
+function formatReportBreakdown(result: ReportResult): string {
+  const lines = [`Here is the analytics report for "${result.spec.title}":`, "", `Total matching: ${result.total} (grouped by ${result.spec.groupBy})`];
+  for (const row of result.rows) lines.push(`- ${row.group}: ${row.value}`);
+  return lines.join("\n");
+}
+
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   kind: "assistant",
@@ -72,6 +88,8 @@ export type AgentChatPanelHandle = {
   logRuleWarning: (text: string) => void;
   /** Logs one live step of validatePolicyRule running against a newly-added rule — what it's checking, and whether that check passed. */
   logValidationStep: (text: string) => void;
+  /** Logs the same kind of narrated breakdown Gemini gives after a chat-generated report, for a report generated directly (Reports tab's "Add"/"Run Report") — see formatReportBreakdown. */
+  logReportSummary: (result: ReportResult) => void;
 };
 
 export const AgentChatPanel = forwardRef<
@@ -130,6 +148,9 @@ export const AgentChatPanel = forwardRef<
     },
     logValidationStep: (text) => {
       appendMessage({ kind: "tool", text });
+    },
+    logReportSummary: (result) => {
+      appendMessage({ kind: "assistant", text: formatReportBreakdown(result) });
     },
   }));
 
