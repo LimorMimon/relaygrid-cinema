@@ -11,7 +11,8 @@ sent anywhere automatically.
 - [x] **Partner Track** — ClickHouse, with real runtime integration: `lib/partner-mcp.ts`
       spawns the official `mcp-clickhouse` MCP server and writes every sponsor event into a
       real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
-      — it's marked "Live", not "Simulated"). Grafana and Replit remain simulated previews.
+      — it's marked "Live", not "Simulated"). Grafana remains a simulated preview; the
+      Replit hosting-status preview that sat alongside it was removed as scope reduction.
 - [x] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — **confirmed
       working end to end, locally.** `lib/agent-backends/agent-builder.ts` calls
       `@google/genai` with `vertexai: true` against a real Google Cloud project
