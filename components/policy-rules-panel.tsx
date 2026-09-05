@@ -37,6 +37,9 @@ function actionLabel(id: CinemaActionId): string {
   return cinemaDomain.actions.find((a) => a.id === id)?.label ?? id;
 }
 
+/** The compose-a-rule input's example text — also used as the Tab-to-fill value (see its onKeyDown below), so a judge can demo the flow without typing. */
+const RULE_EXAMPLE = "Always restart the audio encoder when it desyncs on a healthy stream";
+
 function riskBadgeClasses(riskLevel: "AUTONOMOUS" | "REQUIRES_APPROVAL"): string {
   return riskLevel === "AUTONOMOUS" ? "border-auto/40 bg-auto-soft text-auto" : "border-caution/40 bg-caution-soft text-caution";
 }
@@ -173,8 +176,12 @@ export function PolicyRulesPanel({
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submit();
+                  if (e.key === "Tab" && !draft) {
+                    e.preventDefault();
+                    setDraft(RULE_EXAMPLE);
+                  }
                 }}
-                placeholder='e.g. "Always restart the audio encoder when it desyncs on a healthy stream"'
+                placeholder={`e.g. "${RULE_EXAMPLE}" (Tab to fill in)`}
                 className="h-9 flex-1 rounded border border-line-bright bg-void-2 px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-signal"
               />
               <Button size="sm" onClick={submit} disabled={!draft.trim()}>

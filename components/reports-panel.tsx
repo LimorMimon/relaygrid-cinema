@@ -23,6 +23,9 @@ import { Button } from "@/components/ui/button";
 import { FlowchartModalShell } from "@/components/policy-flowchart";
 import type { ReportResult, ReportSpec, ReportSuggestion } from "@/lib/grid-engine";
 
+/** The compose-a-report input's example text — also used as the Tab-to-fill value (see its onKeyDown below), so a judge can demo the flow without typing. */
+const REPORT_EXAMPLE = "Audio issues by CDN provider over the last 24 hours";
+
 /**
  * Horizontal single-hue bar list — rows are already sorted descending, so
  * the biggest bucket reads first at a glance. Each row expands on click to
@@ -188,8 +191,12 @@ export function ReportsPanel({
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submit();
+                  if (e.key === "Tab" && !draft) {
+                    e.preventDefault();
+                    setDraft(REPORT_EXAMPLE);
+                  }
                 }}
-                placeholder='e.g. "Audio issues by CDN provider over the last 24 hours"'
+                placeholder={`e.g. "${REPORT_EXAMPLE}" (Tab to fill in)`}
                 className="h-9 flex-1 rounded border border-line-bright bg-void-2 px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-signal"
               />
               <Button size="sm" onClick={submit} disabled={!draft.trim()}>
