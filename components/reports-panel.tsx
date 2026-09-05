@@ -253,7 +253,7 @@ export function ReportsPanel({
                     {spec.metric} by {spec.groupBy} · {spec.timeWindow}
                   </p>
                   {/* Same rationale text a Suggested card shows before it's added — carried onto the spec (see runReport in cinema-grid-app.tsx) so it isn't lost once a report becomes Active. */}
-                  {spec.rationale && <p className="mt-1.5 text-[11px] leading-4 text-ink-faint">{spec.rationale}</p>}
+                  {spec.rationale && <p className="mt-1.5 text-[11px] leading-4 text-ink-dim">{spec.rationale}</p>}
                   <div className="mt-2 flex justify-end">
                     <Button size="sm" variant="outline" onClick={() => handleRun(spec)}>
                       <Play className="size-3.5" /> Run Report
@@ -274,7 +274,7 @@ export function ReportsPanel({
               {suggestedReports.map((s) => (
                 <div key={s.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
                   <p className="text-xs font-medium leading-5 text-ink">{s.title}</p>
-                  <p className="mt-1 text-[11px] leading-4 text-ink-faint">{s.rationale}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-dim">{s.rationale}</p>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">{s.matchCount} matching now</span>
                     <Button size="sm" variant="outline" onClick={() => handleAdd(s)}>

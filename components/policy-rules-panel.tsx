@@ -350,7 +350,7 @@ export function PolicyRulesPanel({
                       <Badge className={riskBadgeClasses(s.riskLevel)}>{s.riskLevel === "AUTONOMOUS" ? "Auto" : "Approval"}</Badge>
                     </div>
                   </div>
-                  <p className="mt-1 text-[11px] leading-4 text-ink-faint">{s.rationale}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-dim">{s.rationale}</p>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
                       Matches {s.matchCount} stream{s.matchCount === 1 ? "" : "s"} now
