@@ -109,10 +109,9 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-4" />
-              <col className="w-11" />
-              <col className="w-11" />
-              <col className="w-16" />
               <col className="w-14" />
+              <col className="w-14" />
+              <col className="w-20" />
               <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
@@ -122,60 +121,69 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
                 <th className="truncate px-1.5 py-1.5">Level</th>
                 <th className="truncate px-1.5 py-1.5">Kind</th>
                 <th className="truncate px-1.5 py-1.5">Source</th>
-                <th className="truncate px-1.5 py-1.5">Message</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line/70">
-              {events.map((e) => {
-                const level = grafanaLevel(e.kind);
-                const isOpen = expandedId === e.id;
-                return (
-                  <Fragment key={e.id}>
-                    <tr
-                      onClick={() => setExpandedId(isOpen ? null : e.id)}
-                      aria-expanded={isOpen}
-                      className={`cursor-pointer font-display text-[10.5px] transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
-                    >
-                      <td className="px-1.5 py-1.5 text-ink-faint">
-                        {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
-                        {formatTimeOnly(new Date(e.timestamp))}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5">
-                        <span className={`rounded border border-line-bright bg-panel-2 px-1 py-0.5 ${level === "warn" ? "text-caution" : "text-signal"}`}>{level}</span>
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.kind}>
-                        {e.kind}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.source}>
-                        {e.source}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 text-ink" title={e.summary}>
-                        {e.summary}
+            {events.map((e) => {
+              const level = grafanaLevel(e.kind);
+              const isOpen = expandedId === e.id;
+              // Message gets its own full-width line below the metadata row
+              // instead of a 6th squeezed column — table-fixed columns can't
+              // reflow just because the container has more room, so a
+              // dedicated Message column was always going to truncate no
+              // matter how wide the panel got. This also reads closer to
+              // Grafana's own Logs list view, where the line's content
+              // follows its metadata rather than sitting in a fixed slot.
+              // One <tbody> per entry (valid HTML — multiple tbody elements
+              // are just row groups) so the separator border sits between
+              // entries only, never between a metadata row and its own
+              // message row underneath.
+              const rowClass = `cursor-pointer font-display transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`;
+              const toggle = () => setExpandedId(isOpen ? null : e.id);
+              return (
+                <tbody key={e.id} className="border-t border-line/70 first:border-t-0">
+                  <tr onClick={toggle} aria-expanded={isOpen} className={`${rowClass} text-[10.5px]`}>
+                    <td className="px-1.5 pt-1.5 text-ink-faint">
+                      {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
+                      {formatTimeOnly(new Date(e.timestamp))}
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5">
+                      <span className={`rounded border border-line-bright bg-panel-2 px-1 py-0.5 ${level === "warn" ? "text-caution" : "text-signal"}`}>{level}</span>
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5 text-ink-dim" title={e.kind}>
+                      {e.kind}
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5 text-ink-dim" title={e.source}>
+                      {e.source}
+                    </td>
+                  </tr>
+                  <tr onClick={toggle} aria-expanded={isOpen} className={rowClass}>
+                    <td />
+                    <td colSpan={4} className="px-1.5 pb-1.5 font-display text-[10.5px] leading-5 text-ink">
+                      {e.summary}
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={5} className="bg-void px-3 py-2">
+                        <p className="mb-1 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">Detected fields</p>
+                        <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-display text-[10.5px] leading-5">
+                          {Object.entries({ id: e.id, timestamp: new Date(e.timestamp).toISOString(), level, source: e.source, kind: e.kind, ...e.payload }).map(([key, value]) => (
+                            <Fragment key={key}>
+                              <dt className="text-ink-faint">{key}</dt>
+                              <dd className="truncate text-ink-dim" title={typeof value === "object" ? JSON.stringify(value) : String(value)}>
+                                {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                              </dd>
+                            </Fragment>
+                          ))}
+                        </dl>
                       </td>
                     </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={6} className="bg-void px-3 py-2">
-                          <p className="mb-1 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">Detected fields</p>
-                          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-display text-[10.5px] leading-5">
-                            {Object.entries({ id: e.id, timestamp: new Date(e.timestamp).toISOString(), level, source: e.source, kind: e.kind, ...e.payload }).map(([key, value]) => (
-                              <Fragment key={key}>
-                                <dt className="text-ink-faint">{key}</dt>
-                                <dd className="truncate text-ink-dim" title={typeof value === "object" ? JSON.stringify(value) : String(value)}>
-                                  {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                                </dd>
-                              </Fragment>
-                            ))}
-                          </dl>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
+                  )}
+                </tbody>
+              );
+            })}
           </table>
         )}
       </div>
