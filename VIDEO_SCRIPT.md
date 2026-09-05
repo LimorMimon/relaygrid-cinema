@@ -136,7 +136,7 @@ healthcare, tomorrow."*
 | Public repo with all source/assets/instructions | ✅ repo has a LICENSE (MIT, on origin, shows in GitHub's About sidebar), and `origin/main` is now up to date with local |
 | Repo demonstrably calls an accepted Google Cloud SDK (`google-genai`/etc.) at runtime | ✅ both `gemini-direct` and `agent-builder` backends call `@google/genai` |
 | "Powered by ... Google Cloud Agent Builder" (the stronger, literal reading in the challenge brief) | ✅ **live on the public URL itself** via Workload Identity Federation (no service-account key) — confirmed live: a real chat turn on relaygrid-cinema.vercel.app round-tripped through Vertex AI and came back tagged "via Google Cloud · Vertex AI" |
-| Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided and declared.** Real runtime use confirmed live (81 `mcp-grafana` tools, real Loki writes). ClickHouse is also real and tested in the repo, just not the declared track |
+| Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided, declared, and live on the public URL itself** (a vendored Linux `mcp-grafana` binary runs inside the Vercel function — real runtime use confirmed live: 81 tools, real Loki writes from `relaygrid-cinema.vercel.app`). ClickHouse is also real and tested, but local-dev-only for now (Python venv, bigger porting problem, not the declared track anyway) |
 | Text description (summary, tech, learnings) | ✅ drafted in SUBMISSION.md, ready to paste |
 | Demo video, ≤3 min, YouTube/Vimeo, public, English/subtitles | ❌ not recorded yet — this file |
 | Devpost submission form completed | ❌ not submitted yet |
