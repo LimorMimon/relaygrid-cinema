@@ -22,13 +22,13 @@ for the text that actually goes into the Devpost form fields.
 
 1. **Push to GitHub.** ✅ Done — `origin/main` is up to date with local.
 2. **Partner Track for the Devpost form: Grafana Labs — decided.** Both ClickHouse and
-   Grafana are equally real in this project, but the form only allows one select, and
-   Grafana fits this project's domain (media-ops dashboards/alerting) more naturally — see
-   SUBMISSION.md's "What's next" section. **Segment 5 below should show the Grafana tab**,
-   not ClickHouse. ClickHouse stays fully implemented and tested in the repo; it's simply
-   not the declared track — feel free to mention that in passing on camera if it fits
-   naturally (it's a genuine strength — "same integration pattern, two real partners"), but
-   Grafana is the one that needs the dedicated close-up.
+   Grafana are equally real in this project and both are now live on the public URL, but the
+   form only allows one select, and Grafana fits this project's domain (media-ops
+   dashboards/alerting) more naturally — see SUBMISSION.md's "What's next" section.
+   **Segment 5 below should show the Grafana tab**, not ClickHouse — it's simply not the
+   declared track. Feel free to mention ClickHouse in passing on camera if it fits naturally
+   (it's a genuine strength — "same seam, two real partners, both live on this exact URL"),
+   but Grafana is the one that needs the dedicated close-up.
 3. **✅ Nothing to do here anymore.** The live public URL now runs `agent-builder` by
    default (Workload Identity Federation, no local switch needed — see SUBMISSION.md). The
    header badge already reads "Google Cloud · Vertex AI" from the very first shot. The
@@ -136,7 +136,7 @@ healthcare, tomorrow."*
 | Public repo with all source/assets/instructions | ✅ repo has a LICENSE (MIT, on origin, shows in GitHub's About sidebar), and `origin/main` is now up to date with local |
 | Repo demonstrably calls an accepted Google Cloud SDK (`google-genai`/etc.) at runtime | ✅ both `gemini-direct` and `agent-builder` backends call `@google/genai` |
 | "Powered by ... Google Cloud Agent Builder" (the stronger, literal reading in the challenge brief) | ✅ **live on the public URL itself** via Workload Identity Federation (no service-account key) — confirmed live: a real chat turn on relaygrid-cinema.vercel.app round-tripped through Vertex AI and came back tagged "via Google Cloud · Vertex AI" |
-| Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided, declared, and live on the public URL itself** (a vendored Linux `mcp-grafana` binary runs inside the Vercel function — real runtime use confirmed live: 81 tools, real Loki writes from `relaygrid-cinema.vercel.app`). ClickHouse is also real and tested, but local-dev-only for now (Python venv, bigger porting problem, not the declared track anyway) |
+| Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided and declared**, and **both it and ClickHouse are live on the public URL itself**. Grafana: a vendored Linux `mcp-grafana` binary runs inside the Vercel function (real tool-calling, 81 tools) plus real Loki writes. ClickHouse: real writes via a direct call to its own HTTP interface (its MCP server is a Python venv, not portable to Vercel the same way — tool-calling stays local-dev-only, but the write path that actually drives the tab's "Live" badge works everywhere) |
 | Text description (summary, tech, learnings) | ✅ drafted in SUBMISSION.md, ready to paste |
 | Demo video, ≤3 min, YouTube/Vimeo, public, English/subtitles | ❌ not recorded yet — this file |
 | Devpost submission form completed | ❌ not submitted yet |

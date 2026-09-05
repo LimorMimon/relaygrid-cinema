@@ -23,30 +23,35 @@ submission outright.
       below. **ClickHouse stays fully real and tested in the repo regardless** — it's not
       being removed, just not the declared track — see the full Partner Track writeup below.
 - [x] **Partner Track — technical writeup** — two real runtime integrations behind the same
-      `lib/partner-mcp.ts` seam. Grafana (**the declared track**) spawns the official
-      `mcp-grafana` MCP server for real tool-calling and pushes every sponsor event directly
-      into a real Loki stream — **confirmed live on `relaygrid-cinema.vercel.app` itself**:
-      81 tools registered against a real Grafana Cloud stack, and clicking `Approve &
-      Execute` on the live public site landed real log lines in Grafana Cloud, badge reading
-      "Live", not "Simulated". Getting a real MCP server running on Vercel's Linux
-      serverless functions at all needed vendoring a Linux build of the binary (see
+      `lib/partner-mcp.ts` seam, **both confirmed live on `relaygrid-cinema.vercel.app`
+      itself**, not just locally. Grafana (**the declared track**): the official
+      `mcp-grafana` MCP server for real tool-calling, plus pushing every sponsor event
+      directly into a real Loki stream — 81 tools registered against a real Grafana Cloud
+      stack, and clicking `Approve & Execute` on the live public site landed real log lines
+      in Grafana Cloud, badge reading "Live". Getting a real MCP server running on Vercel's
+      Linux serverless functions at all needed vendoring a Linux build of the binary (see
       `vendor/mcp-grafana-linux-x64/`) — the git-ignored Windows binary used for local dev
-      obviously can't run there, and Grafana Cloud's hosted MCP endpoint turned out to only
-      support interactive OAuth 2.1 today, no machine-to-machine auth, so it wasn't usable
-      from a headless function either. ClickHouse (**also real, also tested locally, not the
-      declared track**) spawns the official `mcp-clickhouse` MCP server and writes every
-      sponsor event into a real `policy_events` table on ClickHouse Cloud — real and tested,
-      but **not yet live on the public URL** (it's a Python venv, a bigger porting problem
-      than a single Go binary, and out of scope since it isn't the declared track).
-      `PARTNER_MCP` can run both together locally (`clickhouse,grafana`) or either alone; the
-      live deployment runs `grafana` only. One partner having a problem never affects the
-      other or crashes anything — confirmed live with a deliberately broken Loki URL and an
-      invalid partner id, both silently dropped with a server-side log line,
+      obviously can't run there, and Grafana Cloud's own hosted MCP endpoint turned out to
+      only support interactive OAuth 2.1 today, no machine-to-machine auth, so it wasn't
+      usable from a headless function either. ClickHouse (**also real, not the declared
+      track**): writes every sponsor event into a real `policy_events` table on ClickHouse
+      Cloud — confirmed live with a real `Approve & Execute` click on the public site, badge
+      reading "Live" there too, and a 4-request concurrent burst against the live URL all
+      succeeding in 1.5–2.6s each. Unlike Grafana, this write path calls ClickHouse Cloud's
+      own HTTP interface directly rather than going through the official `mcp-clickhouse`
+      MCP server — that server is a Python venv with no realistic path to bundling into a
+      Vercel function the way a single Go binary was for Grafana, so real Gemini tool-calling
+      against ClickHouse (`listTools`/`callTool`, distinct from the write path above) remains
+      local-dev-only. `PARTNER_MCP` runs both together on the live deployment
+      (`clickhouse,grafana`) as well as locally. One partner having a problem never affects
+      the other or crashes anything — confirmed live with a deliberately broken Loki URL and
+      an invalid partner id, both silently dropped with a server-side log line,
       `getPartnerMcpClients()` in `lib/partner-mcp.ts`. The Integrations tab reflects
-      whichever partners are truly configured — see the ClickHouse or Grafana tab, marked
-      "Live", not "Simulated" (`app/api/partner-info/route.ts` is what lets the Grafana tab
-      tell the difference instead of hardcoding one). The Replit hosting-status preview that
-      sat alongside these two was removed as scope reduction.
+      whichever partners are truly configured — both the ClickHouse and Grafana tab ask
+      `app/api/partner-info/route.ts` and only show "Live" when truly active (ClickHouse's
+      badge used to be hardcoded "Live" regardless — confirmed live that this was quietly
+      false on the very deployment it was meant to describe, before this fix). The Replit
+      hosting-status preview that sat alongside these two was removed as scope reduction.
 - [x] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — **confirmed
       working end to end on the live, public URL**, not just locally.
       `lib/agent-backends/agent-builder.ts` calls `@google/genai` with `vertexai: true`
