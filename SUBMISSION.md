@@ -174,10 +174,22 @@ Both are real, both are fully implemented, and switching between them touches no
 Get `agent-builder` onto the live Vercel deployment, not just local dev — that means either
 getting the `iam.disableServiceAccountKeyCreation` org policy lifted (needs an Organization
 Policy Administrator, not just a project Owner) or implementing Workload Identity Federation
-for Vercel's serverless environment. `lib/partner-mcp.ts` has the same "real integration"
-seam already proven out end-to-end for ClickHouse; adding a real Grafana client behind it is
-the same shape of work, not a new pattern. Then implement the second domain
-(Healthcare/Radiology worklist) that this engine was designed to support.
+for Vercel's serverless environment.
+
+Grafana is the more natural long-term partner for this specific project than the choice of
+ClickHouse for this submission might suggest — a media-ops control room that surfaces stream
+health and flags anomalies is, in substance, exactly the dashboards-and-alerting problem
+Grafana exists to solve, closer to this app's own domain than a general-purpose analytics
+database. The Integrations tab's Grafana preview already renders the live event stream as
+Grafana/Loki-style structured log lines — `level=`/`source=`/`kind=`/`msg=` fields, what
+would land in Loki if `GrafanaTab` (`components/sponsor-integrations.tsx`) posted to
+`loki.grafana.net/loki/api/v1/push` instead of only rendering locally — for exactly this
+reason. `lib/partner-mcp.ts` has the "real partner integration" seam already proven out
+end-to-end for ClickHouse (spawn/authenticate a partner MCP server, forward every
+sponsor-bus event, expose its tools alongside the domain's own); wiring a real Grafana client
+behind that same seam is the same shape of work, not a new pattern or a rewrite. Then
+implement the second domain (Healthcare/Radiology worklist) that this engine was designed to
+support.
 
 Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
 AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator
