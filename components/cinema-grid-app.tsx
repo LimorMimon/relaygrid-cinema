@@ -27,13 +27,13 @@ import {
   resolveCinemaReport,
   listPolicyRuleSuggestions,
   resolveSuggestedPolicyRule,
-  listCinemaActiveReports,
+  listCinemaSuggestedReports,
   injectRandomIncident,
   DEFAULT_POLICY_RULES,
   type StreamRecord,
   type CinemaActionId,
 } from "@/lib/domains/cinema";
-import type { PolicySuggestion, ReportResult, ReportSuggestion } from "@/lib/grid-engine";
+import type { PolicySuggestion, ReportResult, ReportSpec, ReportSuggestion } from "@/lib/grid-engine";
 import { buildSystemInstruction } from "@/lib/agent-prompt";
 
 const systemInstruction = buildSystemInstruction(cinemaDomain);
@@ -90,7 +90,6 @@ export default function CinemaGridApp() {
     agentNotice,
     webmcpReady,
     policyRules,
-    reports,
     savedReportSpecs,
     recentlyChangedIds,
     geminiTools,
@@ -156,22 +155,23 @@ export default function CinemaGridApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refreshSuggestions(); }, []);
 
-  // The Active Reports catalog is pure derived data (no MCP round-trip
-  // needed, unlike policy-rule suggestions) — recomputed live whenever the
-  // grid or audit trail changes, so match counts never go stale. Unlike
-  // policy suggestions, entries never disappear once run (see
-  // listCinemaActiveReports's own doc comment for why).
-  const activeReports = useMemo(() => listCinemaActiveReports(records, audit), [records, audit]);
+  // Report suggestions are pure derived data (no MCP round-trip needed,
+  // unlike policy-rule suggestions) — recomputed live whenever the grid,
+  // audit trail, or active-report list changes, so match counts and the
+  // already-active exclusion never go stale.
+  const suggestedReports = useMemo(
+    () => listCinemaSuggestedReports(records, audit, savedReportSpecs),
+    [records, audit, savedReportSpecs],
+  );
 
-  /** Runs one Active Reports catalog entry and hands back the full result so ReportsPanel can open it in its own modal — callTool is synchronous, so this return value is never stale. */
-  function runActiveReport(suggestion: ReportSuggestion): ReportResult | null {
-    const args = {
-      report_title: suggestion.title,
-      time_window: suggestion.timeWindow,
-      filter_metric: suggestion.filterMetric,
-      group_by: suggestion.groupBy,
-      save_report: true,
-    };
+  /** Shared by both Reports actions below — callTool is synchronous, so the returned ReportResult is never stale. */
+  function runReport(args: {
+    report_title: string;
+    time_window: string;
+    filter_metric: string;
+    group_by: string;
+    save_report: boolean;
+  }): ReportResult | null {
     const outcome = callTool("generate_analytics_report", args);
     chatRef.current?.logToolResult("generate_analytics_report", args, outcome);
     if (!outcome.ok) return null;
@@ -185,11 +185,33 @@ export default function CinemaGridApp() {
       generatedAt: string;
     };
     return {
-      spec: { id: r.reportId, title: r.title, timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"], metric: suggestion.filterMetric, groupBy: r.groupBy, createdAt: r.generatedAt },
+      spec: { id: r.reportId, title: r.title, timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"], metric: args.filter_metric, groupBy: r.groupBy, createdAt: r.generatedAt },
       rows: r.rows,
       total: r.total,
       generatedAt: r.generatedAt,
     };
+  }
+
+  /** Suggested tab's "Add" — saves it, which is what moves it into Active on the next render (see listCinemaSuggestedReports's exclusion). */
+  function addSuggestedReport(suggestion: ReportSuggestion): ReportResult | null {
+    return runReport({
+      report_title: suggestion.title,
+      time_window: suggestion.timeWindow,
+      filter_metric: suggestion.filterMetric,
+      group_by: suggestion.groupBy,
+      save_report: true,
+    });
+  }
+
+  /** Active tab's "Run Report" — re-runs an already-active spec for fresh numbers without creating a second saved entry. */
+  function runSavedReport(spec: ReportSpec): ReportResult | null {
+    return runReport({
+      report_title: spec.title,
+      time_window: spec.timeWindow,
+      filter_metric: spec.metric,
+      group_by: spec.groupBy,
+      save_report: false,
+    });
   }
 
   // execute_action stays out of Gemini's toolset — only a human click on the
@@ -457,11 +479,11 @@ export default function CinemaGridApp() {
             />
           ) : middleTab === "reports" ? (
             <ReportsPanel
-              reports={reports}
               savedReportSpecs={savedReportSpecs}
-              activeReports={activeReports}
+              suggestedReports={suggestedReports}
               onSend={setInjectedPrompt}
-              onRunReport={runActiveReport}
+              onAddSuggestion={addSuggestedReport}
+              onRunSaved={runSavedReport}
             />
           ) : (
             <SponsorIntegrations />

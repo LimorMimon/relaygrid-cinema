@@ -432,15 +432,15 @@ export function resolveCinemaReport(
 }
 
 /**
- * The standing "Active Reports" catalog — a fixed set of named, always-
- * available reports (like the Policies tab's Active rules), not a
- * data-driven suggestion that disappears once you've run it once. Curated,
- * not a full metric×group_by cross product (5×4 would be mostly noise) —
- * picked to cover every filter_metric exactly once, each paired with the
- * groupBy an ops conversation actually reaches for first (which CDN
- * provider is this concentrated on?).
+ * The report catalog for this domain — same role as
+ * POLICY_RULE_SUGGESTION_CATALOG below: curated, not a full
+ * metric×group_by cross product (5×4 would be mostly noise), picked to
+ * cover every filter_metric exactly once, each paired with the groupBy an
+ * ops conversation actually reaches for first (which CDN provider is this
+ * concentrated on?). Suggested until added; once added, it's an Active
+ * report the Reports tab can re-run anytime.
  */
-type ActiveReportTemplate = {
+type ReportCatalogEntry = {
   key: string;
   title: string;
   rationale: string;
@@ -449,7 +449,7 @@ type ActiveReportTemplate = {
   timeWindow: ReportTimeWindow;
 };
 
-const ACTIVE_REPORT_CATALOG: ActiveReportTemplate[] = [
+const REPORT_CATALOG: ReportCatalogEntry[] = [
   {
     key: "bitrate-by-cdn-24h",
     title: "Low-bitrate streams by CDN provider (last 24h)",
@@ -493,35 +493,41 @@ const ACTIVE_REPORT_CATALOG: ActiveReportTemplate[] = [
 ];
 
 /**
- * Deterministic — computed from real current data (each entry's matchCount
- * runs through the exact same resolveCinemaReport the "Run Report" button
- * calls), never invented. Unlike policy-rule suggestions, entries never get
- * excluded once run: these are standing reports meant to be re-run anytime
- * (today's CDN health looks different from yesterday's), not one-time
- * candidates you either add or don't.
+ * Deterministic — computed from real current data (each candidate's
+ * matchCount runs through the exact same resolveCinemaReport the "Add"
+ * button will call), never invented. Excludes anything already active
+ * (same metric + groupBy + timeWindow already in savedReportSpecs) —
+ * mirrors listPolicyRuleSuggestions' own exclusion of already-added rules
+ * below, so a report you've added moves from Suggested to Active instead
+ * of staying listed in both.
  */
-export function listCinemaActiveReports(
+export function listCinemaSuggestedReports(
   records: StreamRecord[],
   audit: AuditEntry<StreamRecord, CinemaActionId>[],
+  activeReportSpecs: ReportSpec[],
 ): ReportSuggestion[] {
-  return ACTIVE_REPORT_CATALOG.map((c) => {
-    const result = resolveCinemaReport(records, audit, {
-      report_title: c.title,
-      time_window: c.timeWindow,
-      filter_metric: c.filterMetric,
-      group_by: c.groupBy,
-      save_report: false,
-    });
-    return {
-      key: c.key,
-      title: c.title,
-      rationale: c.rationale,
-      filterMetric: c.filterMetric,
-      groupBy: c.groupBy,
-      timeWindow: c.timeWindow,
-      matchCount: "error" in result ? 0 : result.total,
-    };
-  }).sort((a, b) => b.matchCount - a.matchCount);
+  return REPORT_CATALOG.filter(
+    (c) => !activeReportSpecs.some((s) => s.metric === c.filterMetric && s.groupBy === c.groupBy && s.timeWindow === c.timeWindow),
+  )
+    .map((c) => {
+      const result = resolveCinemaReport(records, audit, {
+        report_title: c.title,
+        time_window: c.timeWindow,
+        filter_metric: c.filterMetric,
+        group_by: c.groupBy,
+        save_report: false,
+      });
+      return {
+        key: c.key,
+        title: c.title,
+        rationale: c.rationale,
+        filterMetric: c.filterMetric,
+        groupBy: c.groupBy,
+        timeWindow: c.timeWindow,
+        matchCount: "error" in result ? 0 : result.total,
+      };
+    })
+    .sort((a, b) => b.matchCount - a.matchCount);
 }
 
 // --- Default policy rules ---------------------------------------------

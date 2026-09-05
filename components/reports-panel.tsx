@@ -1,22 +1,23 @@
 "use client";
 /**
- * "Reports" tab: Saved sub-tab (compose-a-report input + the most recent
- * result + the saved-report list) and Active sub-tab (a standing catalog of
- * named reports for this domain, computed from real current data) — the
- * same shape as PolicyRulesPanel's Active/Suggested split, so the two
- * "ask in plain English, or pick a ready-made one" flows in this app read
- * as one consistent pattern instead of two different ones.
+ * "Reports" tab: Active sub-tab (compose-a-report input + the reports
+ * you've actually added, each re-runnable) and Suggested sub-tab
+ * (candidate reports computed from real current data, each addable with
+ * one click) — the exact same shape as PolicyRulesPanel's Active/Suggested
+ * split, right down to a report moving from Suggested to Active the moment
+ * you add it (see lib/domains/cinema.ts's listCinemaSuggestedReports,
+ * which excludes anything already active).
  *
- * Reports are read-only and side-effect-free (unlike a policy rule, nothing
- * about a report changes standing automation), so there's no validation
- * step here the way add_suggested_policy_rule needs one — the Active tab's
- * "Run Report" button calls generate_analytics_report directly (via
- * onRunReport, which cinema-grid-app.tsx wires to callTool) and opens the
- * fresh result in its own modal, since a report worth naming and pinning is
- * worth reading somewhere bigger than this sidebar's cramped preview.
+ * Reports are read-only and side-effect-free (unlike a policy rule,
+ * nothing about a report changes standing automation), so there's no
+ * validation step here the way add_suggested_policy_rule needs one — both
+ * "Add" and "Run Report" call generate_analytics_report directly (via
+ * onAddSuggestion/onRunSaved, which cinema-grid-app.tsx wires to callTool)
+ * and open the fresh result in its own modal, since a report worth naming
+ * and pinning is worth reading somewhere bigger than this sidebar.
  */
-import { useEffect, useState } from "react";
-import { BarChart3, Play, Send, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { BarChart3, Play, Plus, Send, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FlowchartModalShell } from "@/components/policy-flowchart";
@@ -45,7 +46,7 @@ function ReportBars({ result }: { result: ReportResult }) {
   );
 }
 
-/** Full-size presentation of one report result — title, exact generation date, total, and the bar breakdown — in its own modal instead of the sidebar's narrow inline view. */
+/** Full-size presentation of one report result — title, exact generation date, total, and the bar breakdown — in its own modal instead of a sidebar-sized preview. */
 function ReportResultModal({ result, onClose }: { result: ReportResult; onClose: () => void }) {
   const generated = new Date(result.generatedAt);
   return (
@@ -66,36 +67,26 @@ function ReportResultModal({ result, onClose }: { result: ReportResult; onClose:
 }
 
 export function ReportsPanel({
-  reports,
   savedReportSpecs,
-  activeReports,
+  suggestedReports,
   onSend,
-  onRunReport,
+  onAddSuggestion,
+  onRunSaved,
 }: {
-  reports: ReportResult[];
+  /** Reports that have actually been added — "Active", in the same sense as an active policy rule. */
   savedReportSpecs: ReportSpec[];
-  /** The standing "Active Reports" catalog for this domain (lib/domains/cinema.ts's listCinemaActiveReports) — always available, not a one-time suggestion. */
-  activeReports: ReportSuggestion[];
+  /** Candidate reports computed from real current data (lib/domains/cinema.ts's listCinemaSuggestedReports) — excludes anything already in savedReportSpecs. */
+  suggestedReports: ReportSuggestion[];
   /** Injects a prompt into the chat panel, same as every other "Send to chat" affordance in this app. */
   onSend: (prompt: string) => void;
-  /** Runs generate_analytics_report for one Active Reports entry and returns the fresh result synchronously (callTool is sync) — null on failure. */
-  onRunReport: (report: ReportSuggestion) => ReportResult | null;
+  /** Adds one suggestion (generate_analytics_report with save_report: true) and returns the fresh result to open immediately — null on failure. */
+  onAddSuggestion: (suggestion: ReportSuggestion) => ReportResult | null;
+  /** Re-runs an already-active spec for current numbers (save_report: false — it's already saved, this doesn't duplicate it) and returns the fresh result. */
+  onRunSaved: (spec: ReportSpec) => ReportResult | null;
 }) {
-  const [subTab, setSubTab] = useState<"saved" | "active">("saved");
+  const [subTab, setSubTab] = useState<"active" | "suggested">("active");
   const [draft, setDraft] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openResult, setOpenResult] = useState<ReportResult | null>(null);
-
-  // Follow the newest report as it arrives, but don't yank the judge's focus
-  // away from a saved report they deliberately clicked into.
-  useEffect(() => {
-    setSelectedId((current) => {
-      if (current && reports.some((r) => r.spec.id === current)) return current;
-      return reports[0]?.spec.id ?? null;
-    });
-  }, [reports]);
-
-  const selected = reports.find((r) => r.spec.id === selectedId) ?? reports[0] ?? null;
 
   function submit() {
     const text = draft.trim();
@@ -104,8 +95,13 @@ export function ReportsPanel({
     setDraft("");
   }
 
-  function handleRun(report: ReportSuggestion) {
-    const result = onRunReport(report);
+  function handleAdd(suggestion: ReportSuggestion) {
+    const result = onAddSuggestion(suggestion);
+    if (result) setOpenResult(result);
+  }
+
+  function handleRun(spec: ReportSpec) {
+    const result = onRunSaved(spec);
     if (result) setOpenResult(result);
   }
 
@@ -116,36 +112,36 @@ export function ReportsPanel({
           <BarChart3 className="mt-0.5 size-4 shrink-0 text-signal" />
           <div>
             <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Analytics Reports</h3>
-            <p className="mt-0.5 text-[11px] text-ink-dim">Run a standing report, describe one, or ask the copilot.</p>
+            <p className="mt-0.5 text-[11px] text-ink-dim">Describe one below, ask the copilot, or add a suggestion.</p>
           </div>
         </div>
         {savedReportSpecs.length > 0 && (
-          <Badge className="shrink-0 border-signal/40 bg-signal-soft text-signal">{savedReportSpecs.length} saved</Badge>
+          <Badge className="shrink-0 border-signal/40 bg-signal-soft text-signal">{savedReportSpecs.length} active</Badge>
         )}
       </div>
 
       <div className="flex gap-1 border-b border-line bg-panel-2/60 px-3 pt-2">
         <button
           type="button"
-          onClick={() => setSubTab("saved")}
-          className={`rounded-t px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-            subTab === "saved" ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
-          }`}
-        >
-          Saved ({savedReportSpecs.length})
-        </button>
-        <button
-          type="button"
           onClick={() => setSubTab("active")}
-          className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+          className={`rounded-t px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
             subTab === "active" ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
           }`}
         >
-          <Sparkles className="size-3" /> Active ({activeReports.length})
+          Active ({savedReportSpecs.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab("suggested")}
+          className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            subTab === "suggested" ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
+          }`}
+        >
+          <Sparkles className="size-3" /> Suggested ({suggestedReports.length})
         </button>
       </div>
 
-      {subTab === "saved" ? (
+      {subTab === "active" ? (
         <>
           <div className="border-b border-line bg-void-2/60 px-4 py-3">
             <p className="mb-2 text-[11px] leading-4 text-ink-dim">Describe a report in plain English — Gemini configures it.</p>
@@ -165,88 +161,53 @@ export function ReportsPanel({
             </div>
           </div>
 
-          {!selected ? (
+          {savedReportSpecs.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <BarChart3 className="mx-auto mb-2 size-5 text-ink-faint" />
-              <p className="text-xs font-medium text-ink-dim">No reports yet</p>
-              <p className="mx-auto mt-1 max-w-[26ch] text-[11px] leading-4 text-ink-faint">
-                Describe one above, or run one from the Active tab.
+              <p className="text-xs font-medium text-ink-dim">No active reports yet</p>
+              <p className="mx-auto mt-1 max-w-[28ch] text-[11px] leading-4 text-ink-faint">
+                Describe one above, or add one from the Suggested tab.
               </p>
             </div>
           ) : (
-            <div className="px-4 py-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="min-w-0 truncate font-display text-sm font-semibold text-ink">{selected.spec.title}</p>
-                <Badge className="shrink-0 border-line-bright bg-void-2 text-ink-dim">{selected.spec.timeWindow}</Badge>
-              </div>
-              <p className="mt-2 font-display text-2xl font-semibold tabular-nums text-ink">{selected.total}</p>
-              <p className="-mt-0.5 text-[11px] text-ink-faint">matching · grouped by {selected.spec.groupBy}</p>
-
-              {selected.rows.length > 0 ? (
-                <div className="mt-3">
-                  <ReportBars result={selected} />
-                </div>
-              ) : (
-                <p className="mt-3 text-xs text-ink-faint">Nothing matched this filter in the selected window.</p>
-              )}
-
-              <p className="mt-3 text-[10px] text-ink-faint">
-                Generated {new Date(selected.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            </div>
-          )}
-
-          {savedReportSpecs.length > 0 && (
-            <div className="border-t border-line">
-              <p className="px-4 pt-2.5 pb-1 font-display text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Saved</p>
-              <ul className="divide-y divide-line">
-                {savedReportSpecs.map((spec) => {
-                  const hasResult = reports.some((r) => r.spec.id === spec.id);
-                  const active = spec.id === selected?.spec.id;
-                  return (
-                    <li key={spec.id}>
-                      <button
-                        type="button"
-                        disabled={!hasResult}
-                        onClick={() => setSelectedId(spec.id)}
-                        className={`flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          active ? "border-l-2 border-signal bg-signal-soft/40" : "border-l-2 border-transparent hover:bg-panel-2"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-display text-xs font-medium text-ink">{spec.title}</p>
-                          <p className="mt-0.5 truncate text-[10px] text-ink-faint">
-                            {spec.metric} by {spec.groupBy}
-                          </p>
-                        </div>
-                        <Badge className="shrink-0 border-line-bright bg-void-2 text-ink-dim">{spec.timeWindow}</Badge>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <ul className="divide-y divide-line">
+              {savedReportSpecs.map((spec) => (
+                <li key={spec.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-xs font-medium text-ink">{spec.title}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-ink-faint">
+                      {spec.metric} by {spec.groupBy} · {spec.timeWindow}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" className="shrink-0" onClick={() => handleRun(spec)}>
+                    <Play className="size-3.5" /> Run Report
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </>
       ) : (
         <div className="px-4 py-3">
-          <p className="mb-2.5 text-[11px] leading-4 text-ink-dim">
-            Standing reports for media-ops — run any of them anytime; counts reflect right now.
-          </p>
-          <div className="space-y-2">
-            {activeReports.map((r) => (
-              <div key={r.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
-                <p className="text-xs font-medium leading-5 text-ink">{r.title}</p>
-                <p className="mt-1 text-[11px] leading-4 text-ink-faint">{r.rationale}</p>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">{r.matchCount} matching now</span>
-                  <Button size="sm" variant="outline" onClick={() => handleRun(r)}>
-                    <Play className="size-3.5" /> Run Report
-                  </Button>
+          <p className="mb-2.5 text-[11px] leading-4 text-ink-dim">Candidates computed from real current data.</p>
+          {suggestedReports.length === 0 ? (
+            <p className="text-[11px] leading-4 text-ink-faint">You've added every suggestion — nice. Check back after the grid changes.</p>
+          ) : (
+            <div className="space-y-2">
+              {suggestedReports.map((s) => (
+                <div key={s.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
+                  <p className="text-xs font-medium leading-5 text-ink">{s.title}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-faint">{s.rationale}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">{s.matchCount} matching now</span>
+                    <Button size="sm" variant="outline" onClick={() => handleAdd(s)}>
+                      <Plus className="size-3.5" /> Add
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
