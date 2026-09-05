@@ -1,21 +1,25 @@
 "use client";
 /**
  * "Reports" tab: Saved sub-tab (compose-a-report input + the most recent
- * result + the saved-report list) and Suggested sub-tab (candidate reports
- * computed from real current data, each addable with one click) — the same
- * shape as PolicyRulesPanel's Active/Suggested split, so the two "ask in
- * plain English, or pick a computed suggestion" flows in this app read as
- * one consistent pattern instead of two different ones.
+ * result + the saved-report list) and Active sub-tab (a standing catalog of
+ * named reports for this domain, computed from real current data) — the
+ * same shape as PolicyRulesPanel's Active/Suggested split, so the two
+ * "ask in plain English, or pick a ready-made one" flows in this app read
+ * as one consistent pattern instead of two different ones.
  *
  * Reports are read-only and side-effect-free (unlike a policy rule, nothing
  * about a report changes standing automation), so there's no validation
- * step here the way add_suggested_policy_rule needs one — a suggestion's
- * "Generate" button calls generate_analytics_report directly.
+ * step here the way add_suggested_policy_rule needs one — the Active tab's
+ * "Run Report" button calls generate_analytics_report directly (via
+ * onRunReport, which cinema-grid-app.tsx wires to callTool) and opens the
+ * fresh result in its own modal, since a report worth naming and pinning is
+ * worth reading somewhere bigger than this sidebar's cramped preview.
  */
 import { useEffect, useState } from "react";
-import { BarChart3, Plus, Send, Sparkles } from "lucide-react";
+import { BarChart3, Play, Send, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FlowchartModalShell } from "@/components/policy-flowchart";
 import type { ReportResult, ReportSpec, ReportSuggestion } from "@/lib/grid-engine";
 
 /** Horizontal single-hue bar list — rows are already sorted descending, so the biggest bucket reads first at a glance. */
@@ -41,25 +45,46 @@ function ReportBars({ result }: { result: ReportResult }) {
   );
 }
 
+/** Full-size presentation of one report result — title, exact generation date, total, and the bar breakdown — in its own modal instead of the sidebar's narrow inline view. */
+function ReportResultModal({ result, onClose }: { result: ReportResult; onClose: () => void }) {
+  const generated = new Date(result.generatedAt);
+  return (
+    <FlowchartModalShell
+      title={result.spec.title}
+      description={`Grouped by ${result.spec.groupBy} · ${result.spec.timeWindow === "all" ? "all time" : `last ${result.spec.timeWindow}`} · generated ${generated.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })} at ${generated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+      onClose={onClose}
+    >
+      <p className="font-display text-3xl font-semibold tabular-nums text-ink">{result.total}</p>
+      <p className="-mt-0.5 mb-4 text-[11px] text-ink-faint">matching records</p>
+      {result.rows.length > 0 ? (
+        <ReportBars result={result} />
+      ) : (
+        <p className="text-xs text-ink-faint">Nothing matched this filter in the selected window.</p>
+      )}
+    </FlowchartModalShell>
+  );
+}
+
 export function ReportsPanel({
   reports,
   savedReportSpecs,
-  suggestions,
+  activeReports,
   onSend,
-  onGenerateSuggestion,
+  onRunReport,
 }: {
   reports: ReportResult[];
   savedReportSpecs: ReportSpec[];
-  /** Candidate reports computed from real current data (lib/domains/cinema.ts's listCinemaReportSuggestions) — not yet generated. */
-  suggestions: ReportSuggestion[];
+  /** The standing "Active Reports" catalog for this domain (lib/domains/cinema.ts's listCinemaActiveReports) — always available, not a one-time suggestion. */
+  activeReports: ReportSuggestion[];
   /** Injects a prompt into the chat panel, same as every other "Send to chat" affordance in this app. */
   onSend: (prompt: string) => void;
-  /** Runs generate_analytics_report directly for one suggestion — no chat round-trip needed, since a report has no risk to review first. */
-  onGenerateSuggestion: (suggestion: ReportSuggestion) => void;
+  /** Runs generate_analytics_report for one Active Reports entry and returns the fresh result synchronously (callTool is sync) — null on failure. */
+  onRunReport: (report: ReportSuggestion) => ReportResult | null;
 }) {
-  const [subTab, setSubTab] = useState<"saved" | "suggested">("saved");
+  const [subTab, setSubTab] = useState<"saved" | "active">("saved");
   const [draft, setDraft] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openResult, setOpenResult] = useState<ReportResult | null>(null);
 
   // Follow the newest report as it arrives, but don't yank the judge's focus
   // away from a saved report they deliberately clicked into.
@@ -79,6 +104,11 @@ export function ReportsPanel({
     setDraft("");
   }
 
+  function handleRun(report: ReportSuggestion) {
+    const result = onRunReport(report);
+    if (result) setOpenResult(result);
+  }
+
   return (
     <section className="shrink-0 overflow-hidden rounded border border-line bg-panel">
       <div className="flex items-start justify-between gap-3 border-b border-line bg-panel-2 px-4 py-3">
@@ -86,7 +116,7 @@ export function ReportsPanel({
           <BarChart3 className="mt-0.5 size-4 shrink-0 text-signal" />
           <div>
             <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Analytics Reports</h3>
-            <p className="mt-0.5 text-[11px] text-ink-dim">Describe one below, ask the copilot, or pick a suggestion.</p>
+            <p className="mt-0.5 text-[11px] text-ink-dim">Run a standing report, describe one, or ask the copilot.</p>
           </div>
         </div>
         {savedReportSpecs.length > 0 && (
@@ -106,12 +136,12 @@ export function ReportsPanel({
         </button>
         <button
           type="button"
-          onClick={() => setSubTab("suggested")}
+          onClick={() => setSubTab("active")}
           className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-            subTab === "suggested" ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
+            subTab === "active" ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
           }`}
         >
-          <Sparkles className="size-3" /> Suggested ({suggestions.length})
+          <Sparkles className="size-3" /> Active ({activeReports.length})
         </button>
       </div>
 
@@ -140,7 +170,7 @@ export function ReportsPanel({
               <BarChart3 className="mx-auto mb-2 size-5 text-ink-faint" />
               <p className="text-xs font-medium text-ink-dim">No reports yet</p>
               <p className="mx-auto mt-1 max-w-[26ch] text-[11px] leading-4 text-ink-faint">
-                Describe one above, or check the Suggested tab for ready-made candidates.
+                Describe one above, or run one from the Active tab.
               </p>
             </div>
           ) : (
@@ -200,29 +230,27 @@ export function ReportsPanel({
         </>
       ) : (
         <div className="px-4 py-3">
-          <p className="mb-2.5 text-[11px] leading-4 text-ink-dim">Candidates computed from real current data.</p>
-          {suggestions.length === 0 ? (
-            <p className="text-[11px] leading-4 text-ink-faint">No new suggestions right now — every candidate is already saved.</p>
-          ) : (
-            <div className="space-y-2">
-              {suggestions.map((s) => (
-                <div key={s.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
-                  <p className="text-xs font-medium leading-5 text-ink">{s.title}</p>
-                  <p className="mt-1 text-[11px] leading-4 text-ink-faint">{s.rationale}</p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">
-                      {s.matchCount} matching now
-                    </span>
-                    <Button size="sm" variant="outline" onClick={() => onGenerateSuggestion(s)}>
-                      <Plus className="size-3.5" /> Generate
-                    </Button>
-                  </div>
+          <p className="mb-2.5 text-[11px] leading-4 text-ink-dim">
+            Standing reports for media-ops — run any of them anytime; counts reflect right now.
+          </p>
+          <div className="space-y-2">
+            {activeReports.map((r) => (
+              <div key={r.key} className="rounded border border-dashed border-line-bright bg-void-2/40 p-2.5">
+                <p className="text-xs font-medium leading-5 text-ink">{r.title}</p>
+                <p className="mt-1 text-[11px] leading-4 text-ink-faint">{r.rationale}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">{r.matchCount} matching now</span>
+                  <Button size="sm" variant="outline" onClick={() => handleRun(r)}>
+                    <Play className="size-3.5" /> Run Report
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      {openResult && <ReportResultModal result={openResult} onClose={() => setOpenResult(null)} />}
     </section>
   );
 }

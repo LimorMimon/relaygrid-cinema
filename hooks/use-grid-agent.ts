@@ -419,8 +419,11 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
         return {
           reportId: result.spec.id,
           title: result.spec.title,
+          timeWindow: result.spec.timeWindow,
+          groupBy: result.spec.groupBy,
           rows: result.rows,
           total: result.total,
+          generatedAt: result.generatedAt,
           saved: input.save_report,
         };
       },

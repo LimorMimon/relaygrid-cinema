@@ -27,13 +27,13 @@ import {
   resolveCinemaReport,
   listPolicyRuleSuggestions,
   resolveSuggestedPolicyRule,
-  listCinemaReportSuggestions,
+  listCinemaActiveReports,
   injectRandomIncident,
   DEFAULT_POLICY_RULES,
   type StreamRecord,
   type CinemaActionId,
 } from "@/lib/domains/cinema";
-import type { PolicySuggestion, ReportSuggestion } from "@/lib/grid-engine";
+import type { PolicySuggestion, ReportResult, ReportSuggestion } from "@/lib/grid-engine";
 import { buildSystemInstruction } from "@/lib/agent-prompt";
 
 const systemInstruction = buildSystemInstruction(cinemaDomain);
@@ -156,15 +156,15 @@ export default function CinemaGridApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refreshSuggestions(); }, []);
 
-  // Report suggestions are pure derived data (no MCP round-trip needed,
-  // unlike policy-rule suggestions) — recomputed live whenever the grid,
-  // audit trail, or saved-report list changes, so match counts never go stale.
-  const reportSuggestions = useMemo(
-    () => listCinemaReportSuggestions(records, audit, savedReportSpecs),
-    [records, audit, savedReportSpecs],
-  );
+  // The Active Reports catalog is pure derived data (no MCP round-trip
+  // needed, unlike policy-rule suggestions) — recomputed live whenever the
+  // grid or audit trail changes, so match counts never go stale. Unlike
+  // policy suggestions, entries never disappear once run (see
+  // listCinemaActiveReports's own doc comment for why).
+  const activeReports = useMemo(() => listCinemaActiveReports(records, audit), [records, audit]);
 
-  function generateSuggestedReport(suggestion: ReportSuggestion) {
+  /** Runs one Active Reports catalog entry and hands back the full result so ReportsPanel can open it in its own modal — callTool is synchronous, so this return value is never stale. */
+  function runActiveReport(suggestion: ReportSuggestion): ReportResult | null {
     const args = {
       report_title: suggestion.title,
       time_window: suggestion.timeWindow,
@@ -174,6 +174,22 @@ export default function CinemaGridApp() {
     };
     const outcome = callTool("generate_analytics_report", args);
     chatRef.current?.logToolResult("generate_analytics_report", args, outcome);
+    if (!outcome.ok) return null;
+    const r = outcome.result as {
+      reportId: string;
+      title: string;
+      timeWindow: string;
+      groupBy: string;
+      rows: ReportResult["rows"];
+      total: number;
+      generatedAt: string;
+    };
+    return {
+      spec: { id: r.reportId, title: r.title, timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"], metric: suggestion.filterMetric, groupBy: r.groupBy, createdAt: r.generatedAt },
+      rows: r.rows,
+      total: r.total,
+      generatedAt: r.generatedAt,
+    };
   }
 
   // execute_action stays out of Gemini's toolset — only a human click on the
@@ -443,9 +459,9 @@ export default function CinemaGridApp() {
             <ReportsPanel
               reports={reports}
               savedReportSpecs={savedReportSpecs}
-              suggestions={reportSuggestions}
+              activeReports={activeReports}
               onSend={setInjectedPrompt}
-              onGenerateSuggestion={generateSuggestedReport}
+              onRunReport={runActiveReport}
             />
           ) : (
             <SponsorIntegrations />
