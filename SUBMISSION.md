@@ -14,9 +14,9 @@ submission outright.
 - [x] **Push to GitHub.** Done — `origin/main` is up to date with local as of this note.
 - [ ] **3-Minute Trailer (Demo Video)** — required, not recorded yet. Upload to YouTube or
       Vimeo (public, English or English subtitles) and paste the link below. See
-      `VIDEO_SCRIPT.md` for the full shot list — it also flags that "Google Cloud Agent
-      Builder" only gets demonstrated in this video (not on the live URL), so that segment
-      is not optional to cut for time.
+      `VIDEO_SCRIPT.md` for the full shot list — now recordable entirely from the live
+      public URL, including the Google Cloud Agent Builder segment (no local-only
+      workaround needed anymore, see below).
 - [x] **Partner Track for the Devpost form: Grafana Labs.** Decided — both ClickHouse and
       Grafana are real, but the form only allows one, and Grafana is the closer domain fit
       (dashboards/alerting for a media-ops control room) per the reasoning in "What's next"
@@ -40,24 +40,27 @@ submission outright.
       instead of hardcoding one). The Replit hosting-status preview that sat alongside these
       two was removed as scope reduction.
 - [x] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — **confirmed
-      working end to end, locally.** `lib/agent-backends/agent-builder.ts` calls
-      `@google/genai` with `vertexai: true` against a real Google Cloud project
-      (`google-genai`/`@google/genai` is explicitly listed as an accepted SDK on the
-      hackathon's rules page); a real chat turn round-tripped through Vertex AI and
-      returned a correct, tool-calling response. Auth is via Application Default
-      Credentials (`gcloud auth application-default login`), not a service-account key —
-      this GCP project enforces `iam.disableServiceAccountKeyCreation`, which blocks key
-      creation outright, and Workload Identity Federation for Vercel wasn't worth the
-      remaining time. **Consequence: the live Vercel app stays on `gemini-direct`** (Vercel
-      has no `gcloud` session to draw ADC from) — `agent-builder` is demonstrated via local
-      run + the demo video, not the public URL. See `.env.local.example` for exact setup
-      steps and this trade-off spelled out — including two non-obvious fixes required
-      (`GOOGLE_CLOUD_LOCATION=global`, not a region; and the ADC-authenticated account
-      needs the "Agent Platform User" role, which may not be whichever account created the
-      project).
+      working end to end on the live, public URL**, not just locally.
+      `lib/agent-backends/agent-builder.ts` calls `@google/genai` with `vertexai: true`
+      against a real Google Cloud project (`google-genai`/`@google/genai` is explicitly
+      listed as an accepted SDK on the hackathon's rules page). The live app authenticates
+      via **Workload Identity Federation** (Vercel's OIDC token exchanged for short-lived
+      Google credentials via `@vercel/oidc` + `google-auth-library`'s
+      `ExternalAccountClient`, in `lib/agent-backends/agent-builder.ts`) — no
+      service-account key is ever created or stored, which is what makes this possible at
+      all: this GCP project enforces `iam.disableServiceAccountKeyCreation`, blocking key
+      creation outright. Confirmed live on `relaygrid-cinema.vercel.app` itself: a real
+      chat turn round-tripped through Vertex AI, called `apply_query` for real, filtered
+      the live grid to 17 matching streams, and the response was tagged "via Google Cloud ·
+      Vertex AI" in the UI — see the header badge, which reads "Google Cloud · Vertex AI"
+      with a live pulsing dot whenever this backend is what actually served the request.
+      Local dev still uses Application Default Credentials (`gcloud auth
+      application-default login`) unchanged; see `.env.local.example` for exact setup
+      steps for both paths, including the GCP Console steps for the Workload Identity Pool
+      + provider + service-account binding.
 
-Submitting before these are done risks disqualification on "Technological Implementation"
-— see the earlier gap analysis in `README.md`.
+The only remaining blocker is the demo video itself — every technical/runtime requirement
+below it is done and verified live.
 
 ## Project links
 
@@ -168,44 +171,36 @@ No Gemini key is needed to test the live app — it's already configured server-
 is only needed to run the repo locally instead; see "Getting started" in `README.md` for
 exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
 
-**A note on the live URL vs. the demo video, so this isn't mistaken for smoke and mirrors:**
+**A note on which backend actually runs where, so this isn't mistaken for smoke and mirrors:**
 Which `AgentBackend` runs (`lib/agent-backends/`) is one line in `.env.local`/Vercel's env —
 `gemini-direct` (public Gemini API) or `agent-builder` (Vertex AI on a real GCP project).
 Both are real, both are fully implemented, and switching between them touches no other code
 — see `lib/agent-backends/genai-shared.ts`, which both share.
 
-- **The live app runs `gemini-direct`.** ClickHouse is genuinely live there too (check the
-  Integrations tab — it's marked "Live", not "Simulated", and is really writing rows to
-  ClickHouse Cloud). Only the Google Cloud backend isn't switched on for that URL.
-- **Why not:** `agent-builder` needs credentials Vercel's serverless environment can't hold
-  the way this GCP project is set up. A service-account key is the normal answer, but this
-  project enforces the `iam.disableServiceAccountKeyCreation` org policy, which blocks
-  creating one outright (even for a project Owner — lifting it needs an Organization Policy
-  Administrator, a different permission). The alternative, Workload Identity Federation for
-  Vercel, wasn't implemented given the timeline. This is a credentials/infrastructure gap,
-  not a code gap — `agent-builder.ts` is the same code that would run in production if that
-  gap were closed.
-- **It is real and it was tested, not just written:** running locally with
-  `AGENT_BACKEND=agent-builder` and Application Default Credentials
-  (`gcloud auth application-default login`), a real chat turn round-tripped through Vertex
-  AI and came back with a correct, tool-calling answer — confirmed live, not assumed. The
+- **The live app runs `agent-builder` — real Vertex AI, on the public URL itself.**
+  Grafana (and ClickHouse) are genuinely live there too (check the Integrations tab — it's
+  marked "Live", not "Simulated", and is really writing to Grafana Cloud/ClickHouse Cloud).
+- **How, given the org policy:** this GCP project enforces `iam.disableServiceAccountKeyCreation`,
+  which blocks creating a service-account key outright (even for a project Owner). Instead
+  of a key, the live app uses **Workload Identity Federation** — Vercel's own OIDC token
+  (`@vercel/oidc`'s `getVercelOidcToken`, scoped to this specific WIF provider's audience)
+  is exchanged for short-lived Google credentials via `google-auth-library`'s
+  `ExternalAccountClient` (`lib/agent-backends/agent-builder.ts`), impersonating a service
+  account that has the "Agent Platform User" role. No key ever exists, on disk or in an env
+  var — see the GCP Console setup steps in `.env.local.example`.
+- **It is real and it was tested against the live URL itself, not just written:** a real
+  chat turn against `relaygrid-cinema.vercel.app` round-tripped through Vertex AI via this
+  OIDC exchange and came back with a correct, tool-calling answer (`apply_query` really ran,
+  the grid really filtered to the matching streams) — confirmed live, not assumed. The
   header badge and every answer from that backend are labeled "Google Cloud · Vertex AI" in
   the UI itself (not just in server logs), specifically so this is visible on screen, not
   asserted in prose.
-- **Where to see it:** the demo video (see the checklist above — not recorded yet as of this
-  draft) needs to capture this locally: the header badge changing, an answer coming back
-  tagged "via Google Cloud · Vertex AI", and ideally the Google Cloud Console's own Vertex AI
-  API metrics showing the real request traffic, so it's not just the UI's own word for it. To
-  reproduce it yourself instead of relying on the video: set the three `GOOGLE_CLOUD_*`
-  variables and `AGENT_BACKEND=agent-builder` per the setup steps and caveats in
-  `.env.local.example`, then ask the chat anything.
+- **Local dev is unaffected:** Application Default Credentials (`gcloud auth
+  application-default login`) still work exactly as before for running `agent-builder`
+  locally — the OIDC path only activates when the `GCP_WORKLOAD_IDENTITY_POOL_ID` etc. vars
+  are set, which they only need to be on Vercel.
 
 ## What's next
-
-Get `agent-builder` onto the live Vercel deployment, not just local dev — that means either
-getting the `iam.disableServiceAccountKeyCreation` org policy lifted (needs an Organization
-Policy Administrator, not just a project Owner) or implementing Workload Identity Federation
-for Vercel's serverless environment.
 
 **Grafana is this submission's declared Partner Track** — a media-ops control room that
 surfaces stream health and flags anomalies is, in substance, exactly the

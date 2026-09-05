@@ -29,10 +29,13 @@ for the text that actually goes into the Devpost form fields.
    not the declared track — feel free to mention that in passing on camera if it fits
    naturally (it's a genuine strength — "same integration pattern, two real partners"), but
    Grafana is the one that needs the dedicated close-up.
-3. **Re-verify `agent-builder` still authenticates.** It depends on
-   `gcloud auth application-default login` having a live token — that can expire between
-   sessions. Run it locally with `AGENT_BACKEND=agent-builder` and ask one question before
-   you're recording for real, not during the take.
+3. **✅ Nothing to do here anymore.** The live public URL now runs `agent-builder` by
+   default (Workload Identity Federation, no local switch needed — see SUBMISSION.md). The
+   header badge already reads "Google Cloud · Vertex AI" from the very first shot. The
+   whole video can be recorded from `relaygrid-cinema.vercel.app` in one continuous take —
+   no cutting to a local dev window for this anymore. Just do one quick sanity check right
+   before recording: open the live site and confirm the header badge is there and a chat
+   message comes back tagged "via Google Cloud · Vertex AI".
 4. **Start from a clean state.** Click **Reset Session** (or do a hard browser refresh)
    right before you hit record, so the grid is back to its canonical seeded state —
    `STREAM-CDN-804` is the deterministic seeded incident this whole script is built around.
@@ -55,9 +58,12 @@ Two ways to satisfy "English or English subtitles":
 Each beat: **[on-screen action]** — *caption/narration line* — why it's here.
 
 **0:00–0:12 — Open**
-**[App loads. Header badges visible: "WebMCP Live", the Gemini/Google Cloud badge.]**
+**[App loads at relaygrid-cinema.vercel.app. Header badges visible: "WebMCP Live" and
+"Google Cloud · Vertex AI" with its pulsing dot — this is the live public URL, already
+running through Vertex AI via Workload Identity Federation, not a local-only demo.]**
 *"RelayGrid Cinema — a shared human-agent control room for 220 live media streams."*
-Establishes the product in one shot; the header badges are already proof-of-life for later.
+Establishes the product in one shot; the header badges are already proof-of-life for later,
+and there's no need to cut away from this URL for the rest of the recording.
 
 **0:12–0:30 — The problem**
 **[Scroll the grid briefly — 220 rows, CDN/bitrate/audio/subtitle columns visible.]**
@@ -106,15 +112,16 @@ for the "actively use Grafana at runtime" pass/fail check, stronger than anythin
 app's own UI can claim about itself.
 
 **2:25–2:45 — Google Cloud Agent Builder proof (pass/fail requirement — do not cut for
-time; this is the highest-risk requirement for this submission)**
-**[Locally: flip to `AGENT_BACKEND=agent-builder`, reload. Header badge changes to
-"Google Cloud · Vertex AI" with a pulsing dot. Ask one short question in chat.]**
-*"The same agent, now running through Google Cloud Agent Builder on Vertex AI instead of
-the public API — same tools, same safety model."*
+time)**
+**[Still on the live public URL — no cut needed. Point at the header badge, already
+visible since 0:00. Ask one more short question in chat and let the answer land, then
+point at its "via Google Cloud · Vertex AI" tag underneath the message.]**
+*"Every answer here is tagged — this one really went through Google Cloud Agent Builder on
+Vertex AI, authenticated with zero service-account keys, via Workload Identity Federation
+straight from this live URL."*
 **[If feasible: split-screen with Google Cloud Console's Vertex AI API metrics showing the
-live request. This isn't just supporting color — it's the best available evidence that the
-hosted Vercel URL's `gemini-direct` default doesn't fully show on its own; see
-SUBMISSION.md's own gap note on why the public URL can't run this backend yet.]**
+live request landing in real time — extra external confirmation, not required since the
+UI's own tag is already real, but a nice-to-have.]**
 
 **2:45–2:50 — Close**
 **[One more wide shot of the full three-column layout.]**
@@ -128,7 +135,7 @@ healthcare, tomorrow."*
 | Hosted, functioning project URL | ✅ https://relaygrid-cinema.vercel.app |
 | Public repo with all source/assets/instructions | ✅ repo has a LICENSE (MIT, on origin, shows in GitHub's About sidebar), and `origin/main` is now up to date with local |
 | Repo demonstrably calls an accepted Google Cloud SDK (`google-genai`/etc.) at runtime | ✅ both `gemini-direct` and `agent-builder` backends call `@google/genai` |
-| "Powered by ... Google Cloud Agent Builder" (the stronger, literal reading in the challenge brief) | ⚠️ real and working, **locally only** — not on the public URL (infra gap, documented in SUBMISSION.md). The video's segment 7 is currently the only place this gets demonstrated at all — treat it as mandatory, not optional, in editing |
+| "Powered by ... Google Cloud Agent Builder" (the stronger, literal reading in the challenge brief) | ✅ **live on the public URL itself** via Workload Identity Federation (no service-account key) — confirmed live: a real chat turn on relaygrid-cinema.vercel.app round-tripped through Vertex AI and came back tagged "via Google Cloud · Vertex AI" |
 | Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided and declared.** Real runtime use confirmed live (81 `mcp-grafana` tools, real Loki writes). ClickHouse is also real and tested in the repo, just not the declared track |
 | Text description (summary, tech, learnings) | ✅ drafted in SUBMISSION.md, ready to paste |
 | Demo video, ≤3 min, YouTube/Vimeo, public, English/subtitles | ❌ not recorded yet — this file |
