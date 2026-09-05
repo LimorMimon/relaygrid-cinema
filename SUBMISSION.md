@@ -137,6 +137,38 @@ No Gemini key is needed to test the live app — it's already configured server-
 is only needed to run the repo locally instead; see "Getting started" in `README.md` for
 exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
 
+**A note on the live URL vs. the demo video, so this isn't mistaken for smoke and mirrors:**
+Which `AgentBackend` runs (`lib/agent-backends/`) is one line in `.env.local`/Vercel's env —
+`gemini-direct` (public Gemini API) or `agent-builder` (Vertex AI on a real GCP project).
+Both are real, both are fully implemented, and switching between them touches no other code
+— see `lib/agent-backends/genai-shared.ts`, which both share.
+
+- **The live app runs `gemini-direct`.** ClickHouse is genuinely live there too (check the
+  Integrations tab — it's marked "Live", not "Simulated", and is really writing rows to
+  ClickHouse Cloud). Only the Google Cloud backend isn't switched on for that URL.
+- **Why not:** `agent-builder` needs credentials Vercel's serverless environment can't hold
+  the way this GCP project is set up. A service-account key is the normal answer, but this
+  project enforces the `iam.disableServiceAccountKeyCreation` org policy, which blocks
+  creating one outright (even for a project Owner — lifting it needs an Organization Policy
+  Administrator, a different permission). The alternative, Workload Identity Federation for
+  Vercel, wasn't implemented given the timeline. This is a credentials/infrastructure gap,
+  not a code gap — `agent-builder.ts` is the same code that would run in production if that
+  gap were closed.
+- **It is real and it was tested, not just written:** running locally with
+  `AGENT_BACKEND=agent-builder` and Application Default Credentials
+  (`gcloud auth application-default login`), a real chat turn round-tripped through Vertex
+  AI and came back with a correct, tool-calling answer — confirmed live, not assumed. The
+  header badge and every answer from that backend are labeled "Google Cloud · Vertex AI" in
+  the UI itself (not just in server logs), specifically so this is visible on screen, not
+  asserted in prose.
+- **Where to see it:** the demo video (see the checklist above — not recorded yet as of this
+  draft) needs to capture this locally: the header badge changing, an answer coming back
+  tagged "via Google Cloud · Vertex AI", and ideally the Google Cloud Console's own Vertex AI
+  API metrics showing the real request traffic, so it's not just the UI's own word for it. To
+  reproduce it yourself instead of relying on the video: set the three `GOOGLE_CLOUD_*`
+  variables and `AGENT_BACKEND=agent-builder` per the setup steps and caveats in
+  `.env.local.example`, then ask the chat anything.
+
 ## What's next
 
 Get `agent-builder` onto the live Vercel deployment, not just local dev — that means either
