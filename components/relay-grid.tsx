@@ -94,7 +94,7 @@ export function RelayGrid({
         <table className="w-full min-w-[860px] border-collapse text-[13px]">
           <thead className="sticky top-0 z-10 border-b border-line bg-void-2 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-ink-dim">
             <tr>
-              {["Stream ID", "Channel / Program", "CDN Provider", "Bitrate (Mbps)", "FPS", "Audio Status", "Subtitle Sync", "Status Flags", ""].map(
+              {["Stream ID", "Status Flags", "Audio Status", "Subtitle Sync", "Bitrate (Mbps)", "Channel / Program", "CDN Provider", "FPS", ""].map(
                 (label) => (
                   <th key={label} className="whitespace-nowrap px-3 py-2.5">
                     {label}
@@ -124,18 +124,6 @@ export function RelayGrid({
                   <td className={`whitespace-nowrap px-3 py-2.5 font-display text-xs font-medium ${statusIdTextClasses[r.status]} ${statusAccentClasses[r.status]}${flash}`}>
                     {r.id}
                   </td>
-                  <td className={`px-3 py-2.5 text-ink${flash}`}>{r.channel}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 text-ink-dim${flash}`}>{r.cdnProvider}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums ${r.bitrateMbps < 3 ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
-                    {r.bitrateMbps.toFixed(1)}
-                  </td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums text-ink-dim${flash}`}>{r.fps}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.audioStatus !== "OK" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
-                    {r.audioStatus}
-                  </td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.subtitleSync !== "In Sync" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
-                    {r.subtitleSync}
-                  </td>
                   <td className={`px-3 py-2.5${flash}`}>
                     <div className="flex min-w-28 flex-wrap items-center gap-1.5">
                       <Badge className={statusBadgeClasses[r.status]}>
@@ -145,6 +133,18 @@ export function RelayGrid({
                       {isPending && <Badge className="border-line-bright bg-panel-2 text-ink-dim">Pending</Badge>}
                     </div>
                   </td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.audioStatus !== "OK" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
+                    {r.audioStatus}
+                  </td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 ${r.subtitleSync !== "In Sync" ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
+                    {r.subtitleSync}
+                  </td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums ${r.bitrateMbps < 3 ? "font-semibold text-alert" : "text-ink-dim"}${flash}`}>
+                    {r.bitrateMbps.toFixed(1)}
+                  </td>
+                  <td className={`px-3 py-2.5 text-ink${flash}`}>{r.channel}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 text-ink-dim${flash}`}>{r.cdnProvider}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 font-display tabular-nums text-ink-dim${flash}`}>{r.fps}</td>
                   <td className={`px-3 py-2.5${flash}`}>
                     <ChevronRight className="size-4 text-ink-faint" />
                   </td>
