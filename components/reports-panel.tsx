@@ -138,10 +138,26 @@ export function ReportsPanel({
   const [subTab, setSubTab] = useState<"active" | "suggested">("active");
   const [draft, setDraft] = useState("");
 
-  function submit() {
+  /**
+   * Both buttons below route through Gemini (via onSend), since only Gemini
+   * can turn free-text like "audio issues by CDN provider" into real
+   * filter_metric/group_by/time_window args — there's no local parser for
+   * that the way runReport has for a catalog suggestion's already-structured
+   * fields. The wording difference is what decides save_report: the tool's
+   * own description (see generate_analytics_report in lib/mcp-tools.ts)
+   * tells Gemini to set save_report=true when the request implies keeping
+   * it, so "and save it as an active report" is what "Add as Active" leans
+   * on instead of leaving that inference to however the user happened to
+   * phrase the report itself.
+   */
+  function submit(save: boolean) {
     const text = draft.trim();
     if (!text) return;
-    onSend(`Generate an analytics report: "${text}"`);
+    onSend(
+      save
+        ? `Generate an analytics report and save it so it becomes an active, re-runnable report: "${text}"`
+        : `Generate an analytics report: "${text}"`,
+    );
     setDraft("");
   }
 
@@ -195,22 +211,26 @@ export function ReportsPanel({
         <>
           <div className="border-b border-line bg-void-2/60 px-4 py-3">
             <p className="mb-2 text-[11px] leading-4 text-ink-dim">Describe a report in plain English — Gemini configures it.</p>
-            <div className="flex items-center gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submit();
-                  if (e.key === "Tab" && !draft) {
-                    e.preventDefault();
-                    setDraft(REPORT_EXAMPLE);
-                  }
-                }}
-                placeholder={`e.g. "${REPORT_EXAMPLE}" (Tab to fill in)`}
-                className="h-9 flex-1 rounded border border-line-bright bg-void-2 px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-signal"
-              />
-              <Button size="sm" onClick={submit} disabled={!draft.trim()}>
+            {/* Input gets its own row — two buttons plus the input never fit on one line without clipping in this sidebar's width. */}
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit(false);
+                if (e.key === "Tab" && !draft) {
+                  e.preventDefault();
+                  setDraft(REPORT_EXAMPLE);
+                }
+              }}
+              placeholder={`e.g. "${REPORT_EXAMPLE}" (Tab to fill in)`}
+              className="h-9 w-full rounded border border-line-bright bg-void-2 px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-signal"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => submit(false)} disabled={!draft.trim()}>
                 <Send className="size-3.5" /> Generate
+              </Button>
+              <Button size="sm" onClick={() => submit(true)} disabled={!draft.trim()}>
+                <Plus className="size-3.5" /> Add as Active
               </Button>
             </div>
           </div>
