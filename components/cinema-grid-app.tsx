@@ -299,7 +299,24 @@ export default function CinemaGridApp() {
     { label: "Active policies", value: policyRules.length.toLocaleString(), icon: Zap },
   ];
 
-  const completedSteps = audit.length > 0 ? 4 : previews.length > 0 ? 3 : selected ? 2 : query ? 1 : 0;
+  // Deliberately narrower than "any audit/preview exists" — the autonomous
+  // policy engine ticks in the background from the moment the grid loads,
+  // auto-resolving low-risk faults and escalating others into pending
+  // approval cards, independent of anything the Judge Demo Guide's own
+  // walkthrough does. Counting those would make this show 4/4 complete
+  // before a visitor has touched a single guide step. `source === "human"`
+  // (an Approve & Execute click) and `triggeredByRuleId === undefined` (a
+  // preview from the chat's own preview_action call, not a policy
+  // escalation) isolate the guide's own progress from that background noise.
+  const completedSteps = audit.some((entry) => entry.source === "human")
+    ? 4
+    : previews.some((p) => p.triggeredByRuleId === undefined)
+      ? 3
+      : selected
+        ? 2
+        : query
+          ? 1
+          : 0;
 
   function executeAction(target: PreviewState<StreamRecord, CinemaActionId>) {
     setExecutingId(target.id);
