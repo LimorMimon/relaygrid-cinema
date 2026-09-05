@@ -57,14 +57,28 @@ function EmptyState({ label }: { label: string }) {
   return <p className="px-3 py-8 text-center text-[11px] leading-4 text-ink-faint">No {label} yet — trigger an action or add a policy rule to see one here.</p>;
 }
 
-/** Renders the live event stream as Grafana/Loki-style structured log lines, newest first. */
+/** Real Loki levels only, unlike the old placeholder "notice": a routine action or rule registration is "info", a freshly-injected incident starts life as "warn" — nothing here reaches "error", since RelayGrid's whole premise is resolving things before they'd escalate that far. */
+function grafanaLevel(kind: SponsorEvent["kind"]): "info" | "warn" {
+  return kind === "incident_injected" ? "warn" : "info";
+}
+
+/**
+ * Renders the live event stream as a Grafana Explore "Logs" panel: a LogQL
+ * query line, level-colored log lines newest first, and — mirroring the
+ * ClickHouse tab's click-to-expand row — clicking a line opens the
+ * "Detected fields" breakdown Grafana shows under a selected log line,
+ * built from the same payload object that tab's JSON view uses.
+ */
 function GrafanaTab({ events }: { events: SponsorEvent[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-col items-start gap-1.5">
         <SimulatedBadge />
         <p className="text-[11px] leading-4 text-ink-dim">
-          What would be pushed to <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires.
+          What would be pushed to <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires, queryable in Explore as{" "}
+          <span className="font-display text-ink">{`{service="relaygrid"} | json`}</span>. Click a line to inspect its detected fields.
         </p>
       </div>
       <div className="max-h-[420px] overflow-y-auto rounded border border-line-bright bg-void-2">
@@ -73,20 +87,54 @@ function GrafanaTab({ events }: { events: SponsorEvent[] }) {
         ) : (
           <div className="divide-y divide-line/70 font-display text-[10.5px] leading-5">
             {events.map((e) => {
-              const level = e.kind === "action_executed" ? "info" : "notice";
+              const level = grafanaLevel(e.kind);
+              const isOpen = expandedId === e.id;
               return (
-                <div key={e.id} className="px-3 py-1.5">
-                  <span className="text-ink-faint">{formatClock(new Date(e.timestamp))}</span>{" "}
-                  <span className={level === "info" ? "text-signal" : "text-auto"}>level={level}</span>{" "}
-                  <span className="text-ink-dim">source={e.source}</span>{" "}
-                  <span className="text-ink-dim">kind={e.kind}</span>{" "}
-                  <span className="text-ink">msg=&quot;{e.summary}&quot;</span>
-                </div>
+                <Fragment key={e.id}>
+                  <div
+                    onClick={() => setExpandedId(isOpen ? null : e.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        setExpandedId(isOpen ? null : e.id);
+                      }
+                    }}
+                    className={`cursor-pointer px-3 py-1.5 transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
+                  >
+                    <span className="text-ink-faint">
+                      {isOpen ? <ChevronDown className="-mt-0.5 inline size-3" /> : <ChevronRight className="-mt-0.5 inline size-3" />}
+                    </span>{" "}
+                    <span className="text-ink-faint">{formatClock(new Date(e.timestamp))}</span>{" "}
+                    <span className={level === "warn" ? "text-caution" : "text-signal"}>level={level}</span>{" "}
+                    <span className="text-ink-dim">source={e.source}</span>{" "}
+                    <span className="text-ink-dim">kind={e.kind}</span>{" "}
+                    <span className="text-ink">msg=&quot;{e.summary}&quot;</span>
+                  </div>
+                  {isOpen && (
+                    <div className="bg-void px-3 py-2">
+                      <p className="mb-1 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">Detected fields</p>
+                      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-display text-[10.5px] leading-5">
+                        {Object.entries({ id: e.id, timestamp: new Date(e.timestamp).toISOString(), level, source: e.source, kind: e.kind, ...e.payload }).map(([key, value]) => (
+                          <Fragment key={key}>
+                            <dt className="text-ink-faint">{key}</dt>
+                            <dd className="truncate text-ink-dim" title={typeof value === "object" ? JSON.stringify(value) : String(value)}>
+                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                            </dd>
+                          </Fragment>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
+                </Fragment>
               );
             })}
           </div>
         )}
       </div>
+      <p className="text-[10px] text-ink-faint">{events.length.toLocaleString()} log line{events.length === 1 ? "" : "s"}</p>
     </div>
   );
 }
