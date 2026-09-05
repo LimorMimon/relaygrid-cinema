@@ -355,6 +355,11 @@ const REPORT_GROUPABLE_FIELDS: Record<string, keyof StreamRecord & string> = {
   subtitleSync: "subtitleSync",
   status: "status",
   cdn_status: "status",
+  // Only 10 distinct values (see CHANNELS above) despite the "string" field
+  // type — bounded enough to group by, and the one grouping a programming/
+  // ops desk actually cares about: which show, not which pipe it runs on.
+  channel: "channel",
+  program: "channel",
 };
 
 type IssueMetric = { field: keyof StreamRecord & string; isIssue: (record: StreamRecord) => boolean };
@@ -404,6 +409,7 @@ export function resolveCinemaReport(
     metric: args.filter_metric,
     groupBy: args.group_by,
     createdAt: new Date().toISOString(),
+    rationale: args.report_rationale,
   };
 
   if (args.filter_metric === "auto_remediation_count") {
@@ -529,6 +535,31 @@ export function listCinemaSuggestedReports(
     })
     .sort((a, b) => b.matchCount - a.matchCount);
 }
+
+/**
+ * Reports seeded as already-Active for every new session — same role as
+ * DEFAULT_POLICY_RULES below, but for the Reports tab. Unlike REPORT_CATALOG
+ * (which is Suggested until a human clicks "Add"), this one ships turned on,
+ * because it answers the question this domain's own audience — a network or
+ * studio ops desk — asks first: not "which infrastructure is unhealthy" but
+ * "which show is at risk." group_by "channel" is what makes this report
+ * different from every REPORT_CATALOG entry above: those all group by CDN
+ * provider (an infra question); this one groups by the actual program, which
+ * is the film/broadcast-industry-specific cut none of the infra-oriented
+ * suggestions can answer.
+ */
+export const DEFAULT_REPORT_SPECS: ReportSpec[] = [
+  {
+    id: "report-default-status-by-channel",
+    title: "Degraded or failing streams by Channel / Program (all time)",
+    rationale:
+      'The industry doesn\'t experience a "CDN incident" — it experiences a ruined premiere or a botched live event. Grouping by Channel / Program instead of infrastructure surfaces which actual show is carrying technical risk right now, which is the number a network head or studio partner asks for before "which provider."',
+    timeWindow: "all",
+    metric: "status",
+    groupBy: "channel",
+    createdAt: new Date(NOW).toISOString(),
+  },
+];
 
 // --- Default policy rules ---------------------------------------------
 //

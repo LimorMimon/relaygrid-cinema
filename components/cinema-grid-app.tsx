@@ -30,6 +30,7 @@ import {
   listCinemaSuggestedReports,
   injectRandomIncident,
   DEFAULT_POLICY_RULES,
+  DEFAULT_REPORT_SPECS,
   type StreamRecord,
   type CinemaActionId,
 } from "@/lib/domains/cinema";
@@ -74,7 +75,7 @@ export default function CinemaGridApp() {
   );
 
   const reportingOptions = useMemo<ReportingOptions<StreamRecord, CinemaActionId>>(
-    () => ({ resolveReport: resolveCinemaReport }),
+    () => ({ resolveReport: resolveCinemaReport, defaultSpecs: DEFAULT_REPORT_SPECS }),
     [],
   );
 
@@ -171,6 +172,7 @@ export default function CinemaGridApp() {
     filter_metric: string;
     group_by: string;
     save_report: boolean;
+    report_rationale?: string;
   }): ReportResult | null {
     const outcome = callTool("generate_analytics_report", args);
     chatRef.current?.logToolResult("generate_analytics_report", args, outcome);
@@ -185,7 +187,15 @@ export default function CinemaGridApp() {
       generatedAt: string;
     };
     return {
-      spec: { id: r.reportId, title: r.title, timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"], metric: args.filter_metric, groupBy: r.groupBy, createdAt: r.generatedAt },
+      spec: {
+        id: r.reportId,
+        title: r.title,
+        timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"],
+        metric: args.filter_metric,
+        groupBy: r.groupBy,
+        createdAt: r.generatedAt,
+        rationale: args.report_rationale,
+      },
       rows: r.rows,
       total: r.total,
       generatedAt: r.generatedAt,
@@ -200,6 +210,7 @@ export default function CinemaGridApp() {
       filter_metric: suggestion.filterMetric,
       group_by: suggestion.groupBy,
       save_report: true,
+      report_rationale: suggestion.rationale,
     });
   }
 
@@ -211,6 +222,7 @@ export default function CinemaGridApp() {
       filter_metric: spec.metric,
       group_by: spec.groupBy,
       save_report: false,
+      report_rationale: spec.rationale,
     });
   }
 

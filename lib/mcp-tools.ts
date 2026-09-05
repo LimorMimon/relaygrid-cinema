@@ -259,6 +259,8 @@ export type GenerateReportArgs = {
   filter_metric: string;
   group_by: string;
   save_report: boolean;
+  /** Not part of Gemini's function-calling schema (see the tool's JSON schema below) — only the app itself sets this, when running a catalog suggestion or a seeded default, so the "why" survives onto the saved ReportSpec. */
+  report_rationale?: string;
 };
 
 export type ToolHandlers<TRecord extends { id: string }, TActionId extends string> = {

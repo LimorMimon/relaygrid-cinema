@@ -440,6 +440,8 @@ export type ReportSpec = {
   /** Domain-resolved group-by key, e.g. "cdnProvider". */
   groupBy: string;
   createdAt: string;
+  /** Why this report is worth having active, carried over from its ReportSuggestion (or hand-written for a seeded default) — shown in full on the Active tab, same as a Suggested card. Absent for a free-text report a human typed into the "Active" composer, which has no catalog rationale to carry. */
+  rationale?: string;
 };
 
 /** recordIds is every id that landed in this group, not just its count — lets a viewer drill from "11 in EU-West" down to which 11. */

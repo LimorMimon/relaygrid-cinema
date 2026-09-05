@@ -98,6 +98,8 @@ export type ReportingOptions<TRecord, TActionId extends string> = {
     audit: AuditEntry<TRecord, TActionId>[],
     input: GenerateReportArgs,
   ) => ReportResult | { error: string };
+  /** Reports seeded as already-Active for every new session, same role as PolicyOptions.defaultRules. */
+  defaultSpecs?: ReportSpec[];
 };
 
 export function useGridAgent<TRecord extends { id: string }, TActionId extends string>(
@@ -119,7 +121,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   const [webmcpReady, setWebmcpReady] = useState(false);
   const [policyRules, setPolicyRules] = useState<PolicyRule<TRecord, TActionId>[]>(policyOptions?.defaultRules ?? []);
   const [reports, setReports] = useState<ReportResult[]>([]);
-  const [savedReportSpecs, setSavedReportSpecs] = useState<ReportSpec[]>([]);
+  const [savedReportSpecs, setSavedReportSpecs] = useState<ReportSpec[]>(reportingOptions?.defaultSpecs ?? []);
   // Whichever record ids a human-approved execution or an autonomous policy
   // rule *just* changed — a transient "look here" signal for the grid UI,
   // separate from the permanent per-record status. Self-clears below.
@@ -606,9 +608,9 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
     setAgentNotice(null);
     setPolicyRules(policyOptions?.defaultRules ?? []);
     setReports([]);
-    setSavedReportSpecs([]);
+    setSavedReportSpecs(reportingOptions?.defaultSpecs ?? []);
     setRecentlyChangedIds(new Set());
-  }, [initial, policyOptions]);
+  }, [initial, policyOptions, reportingOptions]);
 
   return {
     records,
