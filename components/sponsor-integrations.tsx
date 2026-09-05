@@ -303,6 +303,14 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
+/**
+ * The Partner Track actually declared on the hackathon submission form —
+ * both tabs are equally real, but only one can be named there. A single
+ * constant so the tab switcher's styling below never has to be edited by
+ * hand if the declared track ever changes: flip this one line instead.
+ */
+const DECLARED_PARTNER_TRACK: TabId = "grafana";
+
 export function SponsorIntegrations() {
   const [tab, setTab] = useState<TabId>("grafana");
   const events = useSponsorEvents();
@@ -329,18 +337,31 @@ export function SponsorIntegrations() {
 
       {/* Short labels on purpose — this column can be as narrow as 300px, and the full sponsor name (e.g. "ClickHouse Event Store") only needs to appear once, as each tab body's own heading below. */}
       <div className="flex flex-wrap gap-1 border-b border-line bg-panel-2/60 px-3 pt-2">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 rounded-t px-2.5 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-              tab === id ? "border border-b-0 border-line bg-panel text-ink" : "text-ink-faint hover:text-ink-dim"
-            }`}
-          >
-            <Icon className="size-3" /> {label}
-          </button>
-        ))}
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const isSelected = tab === id;
+          const isDeclared = id === DECLARED_PARTNER_TRACK;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              title={isDeclared ? `${label} — the Partner Track declared for this hackathon submission` : undefined}
+              className={`flex items-center gap-1.5 rounded-t px-2.5 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                isSelected
+                  ? isDeclared
+                    ? "border border-b-0 border-signal/50 bg-panel text-signal"
+                    : "border border-b-0 border-line bg-panel text-ink"
+                  : isDeclared
+                    ? "text-signal/70 hover:text-signal"
+                    : "text-ink-faint hover:text-ink-dim"
+              }`}
+            >
+              <Icon className="size-3" /> {label}
+              {/* Same pulsing-dot language the header uses for "WebMCP Live" — marks this as the declared track at a glance, independent of which tab happens to be selected right now. */}
+              {isDeclared && <span className="size-1.5 animate-pulse-dot rounded-full bg-signal" aria-hidden="true" />}
+            </button>
+          );
+        })}
       </div>
 
       <div className="px-4 py-3">
