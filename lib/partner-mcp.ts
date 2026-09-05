@@ -22,11 +22,16 @@
  * Replit is not implemented; it would need e.g. REPLIT_MCP_URL + a Replit
  * API token.
  *
- * PARTNER_MCP selects which of these are active — a single id ("clickhouse")
+ * PARTNER_MCP selects which of these to attempt — a single id ("clickhouse")
  * or a comma-separated list to run more than one at once ("clickhouse,grafana").
- * Every call site (getPartnerMcpClients() below) treats a partner failure —
- * a subprocess that won't start, a network call that times out — as that one
- * partner's problem only: it's dropped from the result for that call, logged
+ * "Attempt" because getPartnerMcpClients() below checks each one's
+ * isConfigured() first: a partner listed in PARTNER_MCP whose required env
+ * vars aren't all set is silently left out entirely, so testing one partner
+ * at a time (e.g. a judge with only CLICKHOUSE_* filled in) never wastes a
+ * request on a connection that was always going to fail. For a partner that
+ * *is* configured, every call site still treats a runtime failure — a
+ * subprocess that won't start, a network call that times out — as that
+ * one partner's problem only: dropped from the result for that call, logged
  * server-side, and never allowed to take down tool-calling, ingestion, or the
  * chat turn for the others. See the try/catch around each client's use in
  * app/api/agent/route.ts, app/api/sponsor-ingest/route.ts, and
@@ -93,6 +98,18 @@ class ClickHousePartnerMcpClient implements PartnerMcpClient {
   id = "clickhouse";
   private clientPromise: Promise<Client> | null = null;
   private tableReady: Promise<void> | null = null;
+
+  /**
+   * True only when every env var connect() would otherwise throw on is
+   * actually set — checked without throwing or touching the network, so
+   * getPartnerMcpClients() can silently leave this partner out entirely
+   * (e.g. a judge testing ClickHouse alone with Grafana's vars left blank)
+   * instead of attempting, and always failing, a connection for it on
+   * every single request.
+   */
+  static isConfigured(): boolean {
+    return Boolean(process.env.CLICKHOUSE_HOST && process.env.CLICKHOUSE_PASSWORD);
+  }
 
   private async connect(): Promise<Client> {
     const bin = path.join(
@@ -199,6 +216,25 @@ class GrafanaPartnerMcpClient implements PartnerMcpClient {
   id = "grafana";
   private clientPromise: Promise<Client> | null = null;
 
+  /**
+   * True only when every env var this client needs — both for MCP
+   * tool-calling (GRAFANA_URL/GRAFANA_SERVICE_ACCOUNT_TOKEN) and for real
+   * Loki ingestion (GRAFANA_LOKI_*) — is actually set. Checked without
+   * throwing or touching the network, so getPartnerMcpClients() can
+   * silently leave this partner out entirely (e.g. a judge testing
+   * ClickHouse alone with Grafana's vars left blank) instead of attempting,
+   * and always failing, a connection or a Loki push on every request.
+   */
+  static isConfigured(): boolean {
+    return Boolean(
+      process.env.GRAFANA_URL &&
+        process.env.GRAFANA_SERVICE_ACCOUNT_TOKEN &&
+        process.env.GRAFANA_LOKI_PUSH_URL &&
+        process.env.GRAFANA_LOKI_USER &&
+        process.env.GRAFANA_LOKI_API_KEY,
+    );
+  }
+
   private async connect(): Promise<Client> {
     const bin = path.join(process.cwd(), ".mcp-grafana", process.platform === "win32" ? "mcp-grafana.exe" : "mcp-grafana");
     const transport = new StdioClientTransport({
@@ -286,11 +322,43 @@ function configuredPartnerIds(): string[] {
     .filter((id) => id.length > 0 && id !== "none");
 }
 
-/** Maps one id to its singleton client, or null (with a warning) for anything unrecognized — a typo in PARTNER_MCP should never crash the server, just quietly run with one fewer partner than intended. */
+// getPartnerMcpClients() runs on every single request (sponsor-ingest fires
+// once per grid event) — without this, a partner a judge hasn't configured
+// yet would print its skip warning on every one of those instead of once.
+const warnedOnce = new Set<string>();
+function warnOnce(key: string, message: string): void {
+  if (warnedOnce.has(key)) return;
+  warnedOnce.add(key);
+  console.warn(message);
+}
+
+/**
+ * Maps one id to its singleton client — or null (with a one-time warning)
+ * when the id is unrecognized, or when it's a real partner but not actually
+ * configured (its required env vars aren't all set). Either way this never
+ * throws: a typo in PARTNER_MCP, or a partner a judge hasn't set up yet,
+ * should just quietly run with one fewer partner than PARTNER_MCP lists,
+ * never crash the server or spam retries that were always going to fail.
+ */
 function clientFor(id: string): PartnerMcpClient | null {
-  if (id === "clickhouse") return (clickHouseSingleton ??= new ClickHousePartnerMcpClient());
-  if (id === "grafana") return (grafanaSingleton ??= new GrafanaPartnerMcpClient());
-  console.warn(`[partner-mcp] Unknown PARTNER_MCP entry "${id}" — ignoring it. Valid values: clickhouse, grafana.`);
+  if (id === "clickhouse") {
+    if (!ClickHousePartnerMcpClient.isConfigured()) {
+      warnOnce("clickhouse", `[partner-mcp] PARTNER_MCP lists "clickhouse" but CLICKHOUSE_HOST/CLICKHOUSE_PASSWORD aren't both set — skipping it (see .env.local.example).`);
+      return null;
+    }
+    return (clickHouseSingleton ??= new ClickHousePartnerMcpClient());
+  }
+  if (id === "grafana") {
+    if (!GrafanaPartnerMcpClient.isConfigured()) {
+      warnOnce(
+        "grafana",
+        `[partner-mcp] PARTNER_MCP lists "grafana" but not all of GRAFANA_URL/GRAFANA_SERVICE_ACCOUNT_TOKEN/GRAFANA_LOKI_PUSH_URL/GRAFANA_LOKI_USER/GRAFANA_LOKI_API_KEY are set — skipping it (see .env.local.example).`,
+      );
+      return null;
+    }
+    return (grafanaSingleton ??= new GrafanaPartnerMcpClient());
+  }
+  warnOnce(`unknown:${id}`, `[partner-mcp] Unknown PARTNER_MCP entry "${id}" — ignoring it. Valid values: clickhouse, grafana.`);
   return null;
 }
 
