@@ -20,20 +20,15 @@ for the text that actually goes into the Devpost form fields.
 
 ## Before you record — do these first, in order
 
-1. **Push to GitHub.** `git status` currently shows the local branch **9 commits ahead of
-   origin/main** — none of today's work (the real Grafana integration, multi-partner
-   support, the two bug fixes) is on the public repo yet. The rules require the repo to
-   contain everything and to demonstrably run the Partner integration at runtime — right
-   now the public repo doesn't. This is the single highest-priority item before anything
-   else, including recording: `git push origin main`.
-2. **Pick ONE Partner Track for the Devpost form.** The rules say choose one of five
-   (IBM / Grafana Labs / Parallel / ClickHouse / Replit); the form itself is a single
-   select. Both ClickHouse and Grafana are equally real in this project — SUBMISSION.md's
-   "Project links" section currently still says ClickHouse, but its own "What's next"
-   section argues Grafana fits this project's domain (media-ops dashboards/alerting) more
-   naturally. **You need to decide before recording** which one gets the dedicated
-   camera-time in the Integrations segment below (segment 5) — the other can stay
-   implemented and mentioned in the repo, just not be the form's declared track.
+1. **Push to GitHub.** ✅ Done — `origin/main` is up to date with local.
+2. **Partner Track for the Devpost form: Grafana Labs — decided.** Both ClickHouse and
+   Grafana are equally real in this project, but the form only allows one select, and
+   Grafana fits this project's domain (media-ops dashboards/alerting) more naturally — see
+   SUBMISSION.md's "What's next" section. **Segment 5 below should show the Grafana tab**,
+   not ClickHouse. ClickHouse stays fully implemented and tested in the repo; it's simply
+   not the declared track — feel free to mention that in passing on camera if it fits
+   naturally (it's a genuine strength — "same integration pattern, two real partners"), but
+   Grafana is the one that needs the dedicated close-up.
 3. **Re-verify `agent-builder` still authenticates.** It depends on
    `gcloud auth application-default login` having a live token — that can expire between
    sessions. Run it locally with `AGENT_BACKEND=agent-builder` and ask one question before
@@ -101,14 +96,13 @@ over live state, not a demo trick. Worth calling out explicitly rather than trea
 noise.
 
 **2:00–2:25 — Partner Track proof (pass/fail requirement — do not cut for time)**
-**[Open Integrations → the tab for whichever partner you declared in the form (step 2
-above). Point out the green "Live" badge, click a log/row to expand its real payload.]**
-*"Every action is also written into a real [Grafana Cloud Loki stream / ClickHouse Cloud
-table] — not a mock."*
-**[If feasible: cut or split-screen to the actual Grafana Cloud Explore view (or ClickHouse
-Cloud's table), showing the same entry having just landed there.]** This external
-confirmation is worth the extra editing effort — it's the single clearest piece of evidence
-for the "actively use \[Partner] at runtime" pass/fail check, stronger than anything the
+**[Open Integrations → the Grafana tab (the declared track). Point out the green "Live —
+Written to real Grafana Cloud" badge, click a log line to expand its real payload.]**
+*"Every action is also written into a real Grafana Cloud Loki stream — not a mock."*
+**[If feasible: cut or split-screen to the actual Grafana Cloud Explore view, showing the
+same log line having just landed there.]** This external confirmation is worth the extra
+editing effort — it's the single clearest piece of evidence
+for the "actively use Grafana at runtime" pass/fail check, stronger than anything the
 app's own UI can claim about itself.
 
 **2:25–2:45 — Google Cloud Agent Builder proof (pass/fail requirement — do not cut for
@@ -132,14 +126,14 @@ healthcare, tomorrow."*
 | Requirement | Status |
 |---|---|
 | Hosted, functioning project URL | ✅ https://relaygrid-cinema.vercel.app |
-| Public repo with all source/assets/instructions | ⚠️ repo exists and has a LICENSE (MIT, already on origin, GitHub will show it in the About sidebar) — but **9 local commits are unpushed**; push before submitting |
+| Public repo with all source/assets/instructions | ✅ repo has a LICENSE (MIT, on origin, shows in GitHub's About sidebar), and `origin/main` is now up to date with local |
 | Repo demonstrably calls an accepted Google Cloud SDK (`google-genai`/etc.) at runtime | ✅ both `gemini-direct` and `agent-builder` backends call `@google/genai` |
 | "Powered by ... Google Cloud Agent Builder" (the stronger, literal reading in the challenge brief) | ⚠️ real and working, **locally only** — not on the public URL (infra gap, documented in SUBMISSION.md). The video's segment 7 is currently the only place this gets demonstrated at all — treat it as mandatory, not optional, in editing |
-| Partner Track: pick one, demonstrate real runtime use | ✅ technically (both ClickHouse and Grafana are real) — ⚠️ but the Devpost form needs exactly one selected; decide before recording (see pre-recording step 2) |
+| Partner Track: pick one, demonstrate real runtime use | ✅ **Grafana Labs — decided and declared.** Real runtime use confirmed live (81 `mcp-grafana` tools, real Loki writes). ClickHouse is also real and tested in the repo, just not the declared track |
 | Text description (summary, tech, learnings) | ✅ drafted in SUBMISSION.md, ready to paste |
 | Demo video, ≤3 min, YouTube/Vimeo, public, English/subtitles | ❌ not recorded yet — this file |
 | Devpost submission form completed | ❌ not submitted yet |
 | Team size ≤4 | ✅ (solo) |
 
-No blockers found beyond the four ❌/⚠️ rows above — everything else the rules ask for is
+No blockers found beyond the ❌/⚠️ rows above — everything else the rules ask for is
 already true of the project as it stands.
