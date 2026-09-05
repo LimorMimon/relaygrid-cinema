@@ -6,8 +6,24 @@ sent anywhere automatically.
 
 ## ⚠ Before you submit — not yet done
 
+Verified against the live rules pages (agentic-cinema.devpost.com + /rules) on 2026-09-05.
+**Deadline: September 9, 2026, 2:00pm PDT** — ~4 days out as of this note. Full checklist
+and shot-by-shot plan in `VIDEO_SCRIPT.md`; the two items below are the ones that block
+submission outright.
+
+- [ ] **Push to GitHub.** The local branch is currently several commits ahead of
+      `origin/main` — today's real work (the Grafana integration, running both partners at
+      once, two bug fixes) isn't on the public repo yet. `git push origin main` before
+      anything else.
 - [ ] **3-Minute Trailer (Demo Video)** — required, not recorded yet. Upload to YouTube or
-      Vimeo (public, English or English subtitles) and paste the link below.
+      Vimeo (public, English or English subtitles) and paste the link below. See
+      `VIDEO_SCRIPT.md` for the full shot list — it also flags that "Google Cloud Agent
+      Builder" only gets demonstrated in this video (not on the live URL), so that segment
+      is not optional to cut for time.
+- [ ] **Pick ONE Partner Track for the Devpost form's single-select field** — both
+      ClickHouse and Grafana are real; the form only allows one. "Project links" below still
+      says ClickHouse — update it once decided (see `VIDEO_SCRIPT.md`'s pre-recording step 2
+      for the trade-off).
 - [x] **Partner Track** — two real runtime integrations behind the same `lib/partner-mcp.ts`
       seam, and `PARTNER_MCP` can run them together (`clickhouse,grafana`, the default) or
       either alone. ClickHouse: spawns the official `mcp-clickhouse` MCP server and writes
