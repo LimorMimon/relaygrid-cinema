@@ -1,4 +1,4 @@
-import { getPartnerMcpClient } from "@/lib/partner-mcp";
+import { getPartnerMcpClients } from "@/lib/partner-mcp";
 import type { SponsorEvent } from "@/lib/sponsor-event-bus";
 
 export const runtime = "nodejs";
@@ -10,14 +10,19 @@ export const runtime = "nodejs";
  * hooks/use-grid-agent.ts. The local event bus already gives the
  * Integrations tab its instant, no-network UI (see
  * components/sponsor-integrations.tsx); this route is the background path
- * that additionally forwards the same event into whichever partner is
- * actually configured (PARTNER_MCP), via PartnerMcpClient.ingestEvent —
- * currently ClickHouse (a real row in the `policy_events` table), a no-op
- * when no partner is configured. Adding Grafana/Replit later means
- * implementing ingestEvent on their own client; this route never changes.
+ * that additionally forwards the same event into every partner actually
+ * configured (PARTNER_MCP may name more than one — see
+ * lib/partner-mcp.ts's getPartnerMcpClients), via each client's own
+ * PartnerMcpClient.ingestEvent — currently a real row in ClickHouse's
+ * `policy_events` table and/or a real Loki push for Grafana, nothing at all
+ * when no partner is configured.
  *
  * Deliberately fire-and-forget from the browser's side: ingestion latency
- * or a transient partner outage must never block the live grid UI.
+ * or a transient partner outage must never block the live grid UI. One
+ * partner failing must also never stop the others from receiving the same
+ * event, so every client is given its own try/catch instead of one for the
+ * whole route — a broken ClickHouse connection can't take Grafana down with
+ * it, or vice versa.
  */
 export async function POST(request: Request) {
   let event: SponsorEvent;
@@ -27,12 +32,21 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  try {
-    await getPartnerMcpClient().ingestEvent(event);
-    return Response.json({ ingested: true });
-  } catch (error) {
-    // Non-fatal by design — the browser doesn't await this call's result,
-    // but still return a real status so it's visible in server logs / devtools.
-    return Response.json({ ingested: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
-  }
+  const results = await Promise.all(
+    getPartnerMcpClients().map(async (client) => {
+      try {
+        await client.ingestEvent(event);
+        return { partner: client.id, ingested: true as const };
+      } catch (error) {
+        // Non-fatal by design — the browser doesn't await this call's
+        // result, and this partner's failure must not affect any other's.
+        // Still logged server-side so a broken integration is visible
+        // somewhere, even though nothing surfaces it to the UI.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[sponsor-ingest] ${client.id} ingestEvent failed:`, message);
+        return { partner: client.id, ingested: false as const, error: message };
+      }
+    }),
+  );
+  return Response.json({ results });
 }

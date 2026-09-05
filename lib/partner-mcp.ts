@@ -20,7 +20,17 @@
  *     release download — see .mcp-grafana/ and the GRAFANA_* vars in
  *     .env.local.example.
  * Replit is not implemented; it would need e.g. REPLIT_MCP_URL + a Replit
- * API token — selected via PARTNER_MCP.
+ * API token.
+ *
+ * PARTNER_MCP selects which of these are active — a single id ("clickhouse")
+ * or a comma-separated list to run more than one at once ("clickhouse,grafana").
+ * Every call site (getPartnerMcpClients() below) treats a partner failure —
+ * a subprocess that won't start, a network call that times out — as that one
+ * partner's problem only: it's dropped from the result for that call, logged
+ * server-side, and never allowed to take down tool-calling, ingestion, or the
+ * chat turn for the others. See the try/catch around each client's use in
+ * app/api/agent/route.ts, app/api/sponsor-ingest/route.ts, and
+ * app/api/partner-warmup/route.ts.
  */
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -48,22 +58,9 @@ export interface PartnerMcpClient {
   ingestEvent(event: SponsorEvent): Promise<void>;
 }
 
-class NoPartnerMcpClient implements PartnerMcpClient {
-  id = "none";
-  async listTools(): Promise<PartnerMcpTool[]> {
-    return [];
-  }
-  async callTool(): Promise<unknown> {
-    throw new Error("No partner MCP server is configured (PARTNER_MCP is unset).");
-  }
-  async ingestEvent(): Promise<void> {
-    // No partner configured — nothing to forward to.
-  }
-}
-
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set — add it to .env.local (see .env.local.example) and set PARTNER_MCP=clickhouse.`);
+  if (!value) throw new Error(`${name} is not set — add it to .env.local (see .env.local.example) and make sure PARTNER_MCP includes the right partner.`);
   return value;
 }
 
@@ -279,11 +276,32 @@ class GrafanaPartnerMcpClient implements PartnerMcpClient {
 let clickHouseSingleton: ClickHousePartnerMcpClient | null = null;
 let grafanaSingleton: GrafanaPartnerMcpClient | null = null;
 
-/** Selects the partner MCP client from PARTNER_MCP. Defaults to none. */
-export function getPartnerMcpClient(): PartnerMcpClient {
-  const id = process.env.PARTNER_MCP;
-  if (!id || id === "none") return new NoPartnerMcpClient();
+/** Parses PARTNER_MCP into the list of configured partner ids — comma-separated ("clickhouse,grafana"), whitespace-tolerant, "none"/blank entries dropped. Unset or "none" alone means no partner at all. */
+function configuredPartnerIds(): string[] {
+  const raw = process.env.PARTNER_MCP;
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0 && id !== "none");
+}
+
+/** Maps one id to its singleton client, or null (with a warning) for anything unrecognized — a typo in PARTNER_MCP should never crash the server, just quietly run with one fewer partner than intended. */
+function clientFor(id: string): PartnerMcpClient | null {
   if (id === "clickhouse") return (clickHouseSingleton ??= new ClickHousePartnerMcpClient());
   if (id === "grafana") return (grafanaSingleton ??= new GrafanaPartnerMcpClient());
-  throw new Error(`Partner MCP integration "${id}" is not implemented yet. Leave PARTNER_MCP unset to run without one.`);
+  console.warn(`[partner-mcp] Unknown PARTNER_MCP entry "${id}" — ignoring it. Valid values: clickhouse, grafana.`);
+  return null;
+}
+
+/**
+ * Every partner MCP client PARTNER_MCP configures — zero, one, or more than
+ * one at once. Callers are expected to treat each client independently (see
+ * the file-header comment above): one partner being down or misconfigured
+ * should never stop the others, or the caller's own request, from working.
+ */
+export function getPartnerMcpClients(): PartnerMcpClient[] {
+  return configuredPartnerIds()
+    .map(clientFor)
+    .filter((client): client is PartnerMcpClient => client !== null);
 }

@@ -9,15 +9,17 @@
  *     ingestSponsorEventRemote -> app/api/sponsor-ingest/route.ts ->
  *     lib/partner-mcp.ts, into an actual ClickHouse Cloud table through the
  *     official mcp-clickhouse MCP server. LiveBadge says so.
- *   - Grafana is real whenever PARTNER_MCP=grafana is actually configured
- *     server-side (same ingestSponsorEventRemote path, into a real Loki
- *     stream via lib/partner-mcp.ts's GrafanaPartnerMcpClient) — GrafanaTab
- *     asks app/api/partner-info/route.ts which partner is truly active and
+ *   - Grafana is real whenever PARTNER_MCP includes "grafana" (it can name
+ *     more than one partner at once, e.g. "clickhouse,grafana" — see
+ *     lib/partner-mcp.ts's getPartnerMcpClients) — same
+ *     ingestSponsorEventRemote path, into a real Loki stream via
+ *     GrafanaPartnerMcpClient. GrafanaTab asks
+ *     app/api/partner-info/route.ts which partners are truly active and
  *     only then swaps its badge from "Simulated" to "Live", the same
  *     honesty the grid's own MCP Action Preview card already practices
- *     ("no changes made" until a human approves). Only one partner is ever
- *     active at a time, so when ClickHouse is configured instead, this tab
- *     correctly falls back to "Simulated".
+ *     ("no changes made" until a human approves). When Grafana isn't one
+ *     of the active partners, this tab correctly falls back to "Simulated"
+ *     regardless of what else is configured.
  * (A third, Replit hosting-status preview lived here too; removed as pure
  * scope reduction — its usefulness was always more limited than the other
  * two, since it modeled Replit as a *deployment target* for this app rather
@@ -266,16 +268,17 @@ export function SponsorIntegrations() {
   const [tab, setTab] = useState<TabId>("grafana");
   const events = useSponsorEvents();
 
-  // Which partner MCP the server is actually configured with (see
-  // app/api/partner-info/route.ts) — truthfully reflects PARTNER_MCP, so
-  // GrafanaTab's badge can't silently claim "Live" or "Simulated" when it
-  // isn't actually true. Same pattern as cinema-grid-app.tsx's agentBackendId.
-  const [partnerId, setPartnerId] = useState<string | null>(null);
+  // Which partner MCP(s) the server is actually configured with (see
+  // app/api/partner-info/route.ts — PARTNER_MCP may name more than one at
+  // once) — truthfully reflects reality, so GrafanaTab's badge can't
+  // silently claim "Live" or "Simulated" when it isn't actually true. Same
+  // pattern as cinema-grid-app.tsx's agentBackendId.
+  const [activePartnerIds, setActivePartnerIds] = useState<string[]>([]);
   useEffect(() => {
     fetch("/api/partner-info")
       .then((res) => res.json())
-      .then((data: { id?: string }) => setPartnerId(data.id ?? null))
-      .catch(() => setPartnerId(null));
+      .then((data: { ids?: string[] }) => setActivePartnerIds(data.ids ?? []))
+      .catch(() => setActivePartnerIds([]));
   }, []);
 
   return (
@@ -303,7 +306,7 @@ export function SponsorIntegrations() {
 
       <div className="px-4 py-3">
         <p className="mb-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">{TABS.find((t) => t.id === tab)?.fullLabel}</p>
-        {tab === "grafana" ? <GrafanaTab events={events} live={partnerId === "grafana"} /> : <ClickHouseTab events={events} />}
+        {tab === "grafana" ? <GrafanaTab events={events} live={activePartnerIds.includes("grafana")} /> : <ClickHouseTab events={events} />}
       </div>
     </section>
   );

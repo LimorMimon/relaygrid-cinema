@@ -1,5 +1,5 @@
 import { getAgentBackend, type AgentContent, type AgentFunctionDeclaration, type AgentTurnResponse } from "@/lib/agent-backends";
-import { getPartnerMcpClient } from "@/lib/partner-mcp";
+import { getPartnerMcpClients, type PartnerMcpClient } from "@/lib/partner-mcp";
 
 export const runtime = "nodejs";
 
@@ -18,13 +18,19 @@ const MAX_PARTNER_TURNS = 4;
  * continue the loop.
  *
  * To keep the browser (and hooks/use-grid-agent.ts) entirely unaware a
- * partner is involved, this route transparently loops: merge the partner's
- * tools onto whatever the browser sent, call the model, and if EVERY
- * functionCall in that response belongs to the partner, resolve them all
- * here and call the model again — repeating until the model either answers
- * in text or asks for a grid tool. A response that mixes partner and grid
- * tool calls in the same turn is handed back to the browser untouched
- * (rare in practice; safer than guessing which half to resolve).
+ * partner is involved, this route transparently loops: merge every
+ * configured partner's tools (PARTNER_MCP may name more than one) onto
+ * whatever the browser sent, call the model, and if EVERY functionCall in
+ * that response belongs to some partner, resolve them all here — each
+ * dispatched to whichever client actually owns that tool name — and call
+ * the model again, repeating until the model either answers in text or asks
+ * for a grid tool. A response that mixes partner and grid tool calls in the
+ * same turn is handed back to the browser untouched (rare in practice;
+ * safer than guessing which half to resolve).
+ *
+ * One partner failing to list its tools (bad credentials, subprocess
+ * crash) never blocks the others or the chat turn overall — it's just
+ * missing from mergedTools for that turn, logged server-side.
  */
 export async function POST(request: Request) {
   let body: { contents?: unknown; tools?: unknown; systemInstruction?: string };
@@ -41,13 +47,27 @@ export async function POST(request: Request) {
 
   try {
     const backend = getAgentBackend();
-    const partner = getPartnerMcpClient();
-    const partnerTools = await partner.listTools();
-    const partnerToolNames = new Set(partnerTools.map((t) => t.name));
-    const mergedTools: AgentFunctionDeclaration[] = [
-      ...((tools as AgentFunctionDeclaration[] | undefined) ?? []),
-      ...partnerTools.map((t) => ({ name: t.name, description: t.description, parameters: t.inputSchema })),
-    ];
+    const partners = getPartnerMcpClients();
+
+    // Which client owns each tool name, so a functionCall can be dispatched
+    // back to the right one below. Built per-partner so one's listTools()
+    // failure only costs that partner's tools, not the whole merge.
+    const toolOwner = new Map<string, PartnerMcpClient>();
+    const partnerToolDecls: AgentFunctionDeclaration[] = [];
+    await Promise.all(
+      partners.map(async (partner) => {
+        try {
+          const partnerTools = await partner.listTools();
+          for (const t of partnerTools) {
+            toolOwner.set(t.name, partner);
+            partnerToolDecls.push({ name: t.name, description: t.description, parameters: t.inputSchema });
+          }
+        } catch (error) {
+          console.error(`[agent] ${partner.id} listTools failed, continuing without its tools:`, error instanceof Error ? error.message : error);
+        }
+      }),
+    );
+    const mergedTools: AgentFunctionDeclaration[] = [...((tools as AgentFunctionDeclaration[] | undefined) ?? []), ...partnerToolDecls];
 
     let history = contents as AgentContent[];
     let result: AgentTurnResponse = { content: null, text: null, functionCalls: [] };
@@ -55,12 +75,13 @@ export async function POST(request: Request) {
       result = await backend.runTurn({ contents: history, tools: mergedTools, systemInstruction });
       if (result.content) history = [...history, result.content];
       if (result.functionCalls.length === 0) break;
-      if (!result.functionCalls.every((call) => partnerToolNames.has(call.name))) break;
+      if (!result.functionCalls.every((call) => toolOwner.has(call.name))) break;
 
       const responseParts = await Promise.all(
         result.functionCalls.map(async (call) => {
           try {
-            const response = await partner.callTool(call.name, call.args ?? {});
+            // Guaranteed present by the .every(toolOwner.has(...)) check above.
+            const response = await toolOwner.get(call.name)!.callTool(call.name, call.args ?? {});
             return { functionResponse: { name: call.name, response: response as object } };
           } catch (error) {
             return { functionResponse: { name: call.name, response: { error: error instanceof Error ? error.message : String(error) } } };
