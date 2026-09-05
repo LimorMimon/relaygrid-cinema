@@ -13,8 +13,16 @@
  * validation step here the way add_suggested_policy_rule needs one — both
  * "Add" and "Run Report" call generate_analytics_report directly (via
  * onAddSuggestion/onRunSaved, which cinema-grid-app.tsx wires to callTool)
- * and open the fresh result in its own modal, since a report worth naming
+ * and hand the fresh result up via onResult, since a report worth naming
  * and pinning is worth reading somewhere bigger than this sidebar.
+ *
+ * The result modal itself (ReportResultModal, exported below) is rendered
+ * by cinema-grid-app.tsx, not here — a report can just as easily come from
+ * typing into the compose box above (which routes through the Gemini chat
+ * panel, not this component) as from "Add"/"Run Report", and both need to
+ * open the same modal. Owning the modal one level up, keyed off one shared
+ * openReportResult state, is what makes chat-generated reports pop the
+ * same modal instead of only leaving a text reply in the transcript.
  */
 import { useState } from "react";
 import { BarChart3, ChevronDown, ChevronRight, Play, Plus, Send, Sparkles } from "lucide-react";
@@ -84,8 +92,8 @@ function ReportBars({ result }: { result: ReportResult }) {
   );
 }
 
-/** Full-size presentation of one report result — title, exact generation date, total, and the bar breakdown — in its own modal instead of a sidebar-sized preview. */
-function ReportResultModal({ result, onClose }: { result: ReportResult; onClose: () => void }) {
+/** Full-size presentation of one report result — title, exact generation date, total, and the bar breakdown — in its own modal instead of a sidebar-sized preview. Rendered by cinema-grid-app.tsx (see this file's header comment), not by ReportsPanel itself. */
+export function ReportResultModal({ result, onClose }: { result: ReportResult; onClose: () => void }) {
   const generated = new Date(result.generatedAt);
   return (
     <FlowchartModalShell
@@ -112,6 +120,7 @@ export function ReportsPanel({
   onSend,
   onAddSuggestion,
   onRunSaved,
+  onResult,
 }: {
   /** Reports that have actually been added — "Active", in the same sense as an active policy rule. */
   savedReportSpecs: ReportSpec[];
@@ -123,10 +132,11 @@ export function ReportsPanel({
   onAddSuggestion: (suggestion: ReportSuggestion) => ReportResult | null;
   /** Re-runs an already-active spec for current numbers (save_report: false — it's already saved, this doesn't duplicate it) and returns the fresh result. */
   onRunSaved: (spec: ReportSpec) => ReportResult | null;
+  /** Hands a freshly generated result up to cinema-grid-app.tsx, which owns the shared modal (see this file's header comment). */
+  onResult: (result: ReportResult) => void;
 }) {
   const [subTab, setSubTab] = useState<"active" | "suggested">("active");
   const [draft, setDraft] = useState("");
-  const [openResult, setOpenResult] = useState<ReportResult | null>(null);
 
   function submit() {
     const text = draft.trim();
@@ -137,12 +147,12 @@ export function ReportsPanel({
 
   function handleAdd(suggestion: ReportSuggestion) {
     const result = onAddSuggestion(suggestion);
-    if (result) setOpenResult(result);
+    if (result) onResult(result);
   }
 
   function handleRun(spec: ReportSpec) {
     const result = onRunSaved(spec);
-    if (result) setOpenResult(result);
+    if (result) onResult(result);
   }
 
   return (
@@ -258,8 +268,6 @@ export function ReportsPanel({
           )}
         </div>
       )}
-
-      {openResult && <ReportResultModal result={openResult} onClose={() => setOpenResult(null)} />}
     </section>
   );
 }

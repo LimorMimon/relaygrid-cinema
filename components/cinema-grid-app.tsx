@@ -16,7 +16,7 @@ import { RelayGrid } from "@/components/relay-grid";
 import { ActionCard } from "@/components/action-card";
 import { AgentChatPanel, type AgentChatPanelHandle } from "@/components/agent-chat-panel";
 import { JudgeGuide, GUIDE_STEPS } from "@/components/judge-guide";
-import { ReportsPanel } from "@/components/reports-panel";
+import { ReportsPanel, ReportResultModal } from "@/components/reports-panel";
 import { PolicyRulesPanel } from "@/components/policy-rules-panel";
 import { SponsorIntegrations } from "@/components/sponsor-integrations";
 import { useGridAgent, type PolicyOptions, type PreviewState, type ReportingOptions } from "@/hooks/use-grid-agent";
@@ -101,6 +101,12 @@ export default function CinemaGridApp() {
   } = useGridAgent<StreamRecord, CinemaActionId>(cinemaDomain, policyOptions, reportingOptions);
 
   const [suggestions, setSuggestions] = useState<PolicySuggestion<StreamRecord>[]>([]);
+  // The one report result currently open in its modal, however it was generated —
+  // "Add"/"Run Report" in the Reports tab (via ReportsPanel's onResult) or a plain-English
+  // request Gemini turned into a generate_analytics_report call in the chat panel (via
+  // callToolForChat below). One shared state means both paths open the exact same modal
+  // instead of the chat path only leaving a text reply in the transcript.
+  const [openReportResult, setOpenReportResult] = useState<ReportResult | null>(null);
 
   function refreshSuggestions() {
     const outcome = callTool("suggest_policy_rules", {});
@@ -232,6 +238,45 @@ export default function CinemaGridApp() {
   // the system's own risk clamp (lib/domains/cinema.ts) before it can run
   // without a human confirming anything.
   const chatTools = useMemo(() => geminiTools.filter((t) => t.name !== "execute_action"), [geminiTools]);
+
+  /**
+   * The exact same callTool the rest of this component uses, except a
+   * successful generate_analytics_report call also opens the shared result
+   * modal — so a plain-English report typed into the Reports composer (which
+   * only ever reaches Gemini, never runReport above) gets the same modal a
+   * click on "Add"/"Run Report" gets, not just Gemini's text reply in the
+   * transcript.
+   */
+  function callToolForChat(name: string, args: unknown) {
+    const outcome = callTool(name, args);
+    if (name === "generate_analytics_report" && outcome.ok) {
+      const a = args as { filter_metric?: string; report_rationale?: string };
+      const r = outcome.result as {
+        reportId: string;
+        title: string;
+        timeWindow: string;
+        groupBy: string;
+        rows: ReportResult["rows"];
+        total: number;
+        generatedAt: string;
+      };
+      setOpenReportResult({
+        spec: {
+          id: r.reportId,
+          title: r.title,
+          timeWindow: r.timeWindow as ReportResult["spec"]["timeWindow"],
+          metric: a.filter_metric ?? "",
+          groupBy: r.groupBy,
+          createdAt: r.generatedAt,
+          rationale: a.report_rationale,
+        },
+        rows: r.rows,
+        total: r.total,
+        generatedAt: r.generatedAt,
+      });
+    }
+    return outcome;
+  }
   const pendingIds = useMemo(
     () => new Set(previews.flatMap((p) => p.plan.map((steps) => steps[0]?.recordId))),
     [previews],
@@ -496,6 +541,7 @@ export default function CinemaGridApp() {
               onSend={setInjectedPrompt}
               onAddSuggestion={addSuggestedReport}
               onRunSaved={runSavedReport}
+              onResult={setOpenReportResult}
             />
           ) : (
             <SponsorIntegrations />
@@ -509,6 +555,7 @@ export default function CinemaGridApp() {
               onDismiss={() => dismissPreview(preview.id)}
             />
           ))}
+          {openReportResult && <ReportResultModal result={openReportResult} onClose={() => setOpenReportResult(null)} />}
         </aside>
 
         {/* Same reasoning as rg-area-guide above: h-full within its tablet grid row, absolute calc(100vh-4rem) once it owns a full desktop column. */}
@@ -517,7 +564,7 @@ export default function CinemaGridApp() {
             ref={chatRef}
             geminiTools={chatTools}
             systemInstruction={systemInstruction}
-            callTool={callTool}
+            callTool={callToolForChat}
             injectedPrompt={injectedPrompt}
             onInjectedPromptConsumed={() => setInjectedPrompt(null)}
             agentBackendId={agentBackendId}
