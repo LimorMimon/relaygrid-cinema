@@ -69,7 +69,10 @@ export async function POST(request: Request) {
       );
       history = [...history, { role: "user", parts: responseParts }];
     }
-    return Response.json(result);
+    // Included on every response, not just fetched once separately, so a
+    // recording of the demo shows each individual answer tagged with the
+    // backend that actually produced it — not a claim made once at page load.
+    return Response.json({ ...result, backend: backend.id });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Agent request failed." }, { status: 502 });
   }

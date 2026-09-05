@@ -251,7 +251,8 @@ export default function CinemaGridApp() {
                 : "border-line-bright bg-panel-2 text-ink-dim"
             }
           >
-            {agentBackendId === "agent-builder" ? "Gemini · Vertex AI" : "Gemini API"}
+            {agentBackendId === "agent-builder" && <span className="size-1.5 animate-pulse-dot rounded-full bg-signal" />}
+            {agentBackendId === "agent-builder" ? "Google Cloud · Vertex AI" : "Gemini API"}
           </Badge>
         </div>
       </header>
@@ -442,6 +443,7 @@ export default function CinemaGridApp() {
             callTool={callTool}
             injectedPrompt={injectedPrompt}
             onInjectedPromptConsumed={() => setInjectedPrompt(null)}
+            agentBackendId={agentBackendId}
           />
         </aside>
       </div>

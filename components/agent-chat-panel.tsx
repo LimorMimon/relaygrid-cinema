@@ -7,7 +7,13 @@ import type { GeminiFunctionDeclaration } from "@/lib/mcp-tools";
 type GeminiPart = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
 
-type ChatMessage = { id: string; kind: "user" | "assistant" | "tool" | "error" | "policy" | "sim" | "warning"; text: string };
+type ChatMessage = {
+  id: string;
+  kind: "user" | "assistant" | "tool" | "error" | "policy" | "sim" | "warning";
+  text: string;
+  /** Which AgentBackend actually produced this message (assistant messages only) — from the /api/agent response itself, not assumed from page-load state. */
+  backend?: string;
+};
 
 const MAX_TURNS = 10;
 
@@ -77,8 +83,13 @@ export const AgentChatPanel = forwardRef<
     onToolCall?: (name: string) => void;
     injectedPrompt?: string | null;
     onInjectedPromptConsumed?: () => void;
+    /** Which AgentBackend the server is actually running (see app/api/agent-backend-info/route.ts) — shown next to "Agent Chat" so the label never silently drifts from what's really answering. */
+    agentBackendId?: string | null;
   }
->(function AgentChatPanel({ geminiTools, systemInstruction, callTool, onToolCall, injectedPrompt, onInjectedPromptConsumed }, ref) {
+>(function AgentChatPanel(
+  { geminiTools, systemInstruction, callTool, onToolCall, injectedPrompt, onInjectedPromptConsumed, agentBackendId },
+  ref,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -152,7 +163,7 @@ export const AgentChatPanel = forwardRef<
         }
         const text = typeof data.text === "string" ? data.text.trim() : "";
         if (text) {
-          appendMessage({ kind: "assistant", text });
+          appendMessage({ kind: "assistant", text, backend: typeof data.backend === "string" ? data.backend : undefined });
           gaveFinalAnswer = true;
         }
 
@@ -189,7 +200,9 @@ export const AgentChatPanel = forwardRef<
       <div className="flex items-center gap-2 border-b border-line bg-panel-2 px-4 py-2.5">
         <Sparkles className="size-3.5 text-signal" />
         <span className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Agent Chat</span>
-        <span className="font-display text-xs text-ink-faint">· Gemini</span>
+        <span className={`font-display text-xs ${agentBackendId === "agent-builder" ? "text-signal" : "text-ink-faint"}`}>
+          · {agentBackendId === "agent-builder" ? "Gemini via Vertex AI" : "Gemini"}
+        </span>
       </div>
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {messages.map((m) => (
@@ -215,12 +228,19 @@ export const AgentChatPanel = forwardRef<
                 {m.text}
               </div>
             ) : (
-              <div
-                className={`max-w-[92%] whitespace-pre-wrap rounded px-3 py-2 text-sm leading-5 ${
-                  m.kind === "user" ? "bg-signal text-void" : "bg-panel-2 text-ink"
-                }`}
-              >
-                {m.text}
+              <div className="max-w-[92%]">
+                <div
+                  className={`whitespace-pre-wrap rounded px-3 py-2 text-sm leading-5 ${
+                    m.kind === "user" ? "bg-signal text-void" : "bg-panel-2 text-ink"
+                  }`}
+                >
+                  {m.text}
+                </div>
+                {m.backend === "agent-builder" && (
+                  <div className="mt-1 flex items-center gap-1 font-display text-[10px] uppercase tracking-wide text-signal">
+                    <span className="size-1.5 animate-pulse-dot rounded-full bg-signal" /> via Google Cloud · Vertex AI
+                  </div>
+                )}
               </div>
             )}
           </div>
