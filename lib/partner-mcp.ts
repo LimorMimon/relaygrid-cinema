@@ -12,12 +12,15 @@
  * must never be imported from a "use client" component. It's only ever
  * imported from app/api/agent/route.ts (runtime = "nodejs").
  *
- * Currently implemented: ClickHouse (via the official `mcp-clickhouse`
- * Python MCP server, run from an isolated venv — see .mcp-clickhouse-venv/
- * and the CLICKHOUSE_* vars in .env.local.example). Grafana/Replit clients
- * are not implemented yet; config they'll need once they are: e.g.
- * GRAFANA_MCP_URL + GRAFANA_SERVICE_ACCOUNT_TOKEN (Grafana), or
- * REPLIT_MCP_URL + a Replit API token (Replit) — selected via PARTNER_MCP.
+ * Currently implemented:
+ *   - ClickHouse, via the official `mcp-clickhouse` Python MCP server, run
+ *     from an isolated venv — see .mcp-clickhouse-venv/ and the
+ *     CLICKHOUSE_* vars in .env.local.example.
+ *   - Grafana, via the official `mcp-grafana` Go binary, run from a local
+ *     release download — see .mcp-grafana/ and the GRAFANA_* vars in
+ *     .env.local.example.
+ * Replit is not implemented; it would need e.g. REPLIT_MCP_URL + a Replit
+ * API token — selected via PARTNER_MCP.
  */
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -186,12 +189,101 @@ class ClickHousePartnerMcpClient implements PartnerMcpClient {
   }
 }
 
+/**
+ * Connects to the official Grafana MCP server (`mcp-grafana`, a Go binary —
+ * no venv/pip equivalent, so it's a straight release download into
+ * .mcp-grafana/ instead of the Python-venv dance ClickHouse needs; see that
+ * folder and the GRAFANA_* vars in .env.local.example) as a stdio
+ * subprocess in `-t stdio` mode. Same lazy-singleton connection shape as
+ * ClickHousePartnerMcpClient above — the subprocess starts on first tool
+ * call and is reused for the life of this server process.
+ */
+class GrafanaPartnerMcpClient implements PartnerMcpClient {
+  id = "grafana";
+  private clientPromise: Promise<Client> | null = null;
+
+  private async connect(): Promise<Client> {
+    const bin = path.join(process.cwd(), ".mcp-grafana", process.platform === "win32" ? "mcp-grafana.exe" : "mcp-grafana");
+    const transport = new StdioClientTransport({
+      command: bin,
+      args: ["-t", "stdio"],
+      env: {
+        ...getDefaultEnvironment(),
+        GRAFANA_URL: requireEnv("GRAFANA_URL"),
+        GRAFANA_SERVICE_ACCOUNT_TOKEN: requireEnv("GRAFANA_SERVICE_ACCOUNT_TOKEN"),
+      },
+    });
+    const client = new Client({ name: "relaygrid-cinema", version: "1.0.0" });
+    await client.connect(transport);
+    return client;
+  }
+
+  /** Connects on first use; if that connection attempt failed, the next call retries instead of reusing a dead promise. */
+  private getClient(): Promise<Client> {
+    if (!this.clientPromise) {
+      this.clientPromise = this.connect().catch((error: unknown) => {
+        this.clientPromise = null;
+        throw error;
+      });
+    }
+    return this.clientPromise;
+  }
+
+  async listTools(): Promise<PartnerMcpTool[]> {
+    const client = await this.getClient();
+    const { tools } = await client.listTools();
+    return tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema }));
+  }
+
+  async callTool(name: string, args: unknown): Promise<unknown> {
+    const client = await this.getClient();
+    return client.callTool({ name, arguments: (args as Record<string, unknown>) ?? {} });
+  }
+
+  /**
+   * Pushes one sponsor-bus event as a real Loki log line — the write path
+   * GrafanaTab's copy (components/sponsor-integrations.tsx) already
+   * describes ("What would be pushed to loki.grafana.net/loki/api/v1/push
+   * as each action fires"). This is deliberately separate from the MCP
+   * tool-calling path above: mcp-grafana wraps Grafana's own HTTP API
+   * (dashboards, alerts, incidents, and read-only Loki/Prometheus queries),
+   * which has no "write a log line" tool — Loki's push endpoint is a
+   * distinct service with its own auth, a Loki-scoped access policy token
+   * from the stack's "Loki -> Details" page in Grafana Cloud, not the
+   * Grafana service-account token used above.
+   */
+  async ingestEvent(event: SponsorEvent): Promise<void> {
+    const url = requireEnv("GRAFANA_LOKI_PUSH_URL");
+    const user = requireEnv("GRAFANA_LOKI_USER");
+    const apiKey = requireEnv("GRAFANA_LOKI_API_KEY");
+    const level = event.kind === "incident_injected" ? "warn" : "info";
+    const line = JSON.stringify({ level, source: event.source, kind: event.kind, msg: event.summary, ...event.payload });
+    // Loki wants each entry's timestamp as a nanosecond-precision Unix string; event.timestamp is milliseconds.
+    const nanos = `${Math.trunc(event.timestamp)}000000`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${user}:${apiKey}`).toString("base64")}`,
+      },
+      body: JSON.stringify({
+        streams: [{ stream: { service: "relaygrid", level, kind: event.kind, source: event.source }, values: [[nanos, line]] }],
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Loki push failed: ${res.status} ${await res.text().catch(() => "")}`);
+    }
+  }
+}
+
 let clickHouseSingleton: ClickHousePartnerMcpClient | null = null;
+let grafanaSingleton: GrafanaPartnerMcpClient | null = null;
 
 /** Selects the partner MCP client from PARTNER_MCP. Defaults to none. */
 export function getPartnerMcpClient(): PartnerMcpClient {
   const id = process.env.PARTNER_MCP;
   if (!id || id === "none") return new NoPartnerMcpClient();
   if (id === "clickhouse") return (clickHouseSingleton ??= new ClickHousePartnerMcpClient());
+  if (id === "grafana") return (grafanaSingleton ??= new GrafanaPartnerMcpClient());
   throw new Error(`Partner MCP integration "${id}" is not implemented yet. Leave PARTNER_MCP unset to run without one.`);
 }

@@ -11,8 +11,13 @@ sent anywhere automatically.
 - [x] **Partner Track** — ClickHouse, with real runtime integration: `lib/partner-mcp.ts`
       spawns the official `mcp-clickhouse` MCP server and writes every sponsor event into a
       real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
-      — it's marked "Live", not "Simulated"). Grafana remains a simulated preview; the
-      Replit hosting-status preview that sat alongside it was removed as scope reduction.
+      — it's marked "Live", not "Simulated"). Grafana has the same shape of real integration
+      implemented (`GrafanaPartnerMcpClient`: spawns the official `mcp-grafana` MCP server for
+      tool-calling, pushes every sponsor event to Loki directly for ingestion) but not yet
+      verified against a real Grafana Cloud stack — set `PARTNER_MCP=grafana` and fill in the
+      `GRAFANA_*` vars in `.env.local.example` to try it; the Integrations tab's Grafana
+      preview stays labeled "Simulated" until then. The Replit hosting-status preview that sat
+      alongside these two was removed as scope reduction.
 - [x] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — **confirmed
       working end to end, locally.** `lib/agent-backends/agent-builder.ts` calls
       `@google/genai` with `vertexai: true` against a real Google Cloud project
@@ -181,16 +186,15 @@ Grafana is the more natural long-term partner for this specific project than the
 ClickHouse for this submission might suggest — a media-ops control room that surfaces stream
 health and flags anomalies is, in substance, exactly the dashboards-and-alerting problem
 Grafana exists to solve, closer to this app's own domain than a general-purpose analytics
-database. The Integrations tab's Grafana preview already renders the live event stream as
-Grafana/Loki-style structured log lines — `level=`/`source=`/`kind=`/`msg=` fields, what
-would land in Loki if `GrafanaTab` (`components/sponsor-integrations.tsx`) posted to
-`loki.grafana.net/loki/api/v1/push` instead of only rendering locally — for exactly this
-reason. `lib/partner-mcp.ts` has the "real partner integration" seam already proven out
-end-to-end for ClickHouse (spawn/authenticate a partner MCP server, forward every
-sponsor-bus event, expose its tools alongside the domain's own); wiring a real Grafana client
-behind that same seam is the same shape of work, not a new pattern or a rewrite. Then
-implement the second domain (Healthcare/Radiology worklist) that this engine was designed to
-support.
+database. `GrafanaPartnerMcpClient` (`lib/partner-mcp.ts`) is now implemented behind the same
+seam ClickHouse proved out — spawns the official `mcp-grafana` MCP server for tool-calling,
+pushes every sponsor-bus event straight to Loki's push API for ingestion, the real version of
+what `GrafanaTab` (`components/sponsor-integrations.tsx`) already renders locally as
+Grafana/Loki-style log lines. What's left is verification against a real Grafana Cloud stack
+— fill in the `GRAFANA_*` vars in `.env.local.example`, set `PARTNER_MCP=grafana`, and confirm
+`listTools()`/`ingestEvent()` round-trip for real — then flip the Integrations tab's Grafana
+badge from "Simulated" to "Live" the same way ClickHouse's already is. After that, implement
+the second domain (Healthcare/Radiology worklist) that this engine was designed to support.
 
 Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
 AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator

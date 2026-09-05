@@ -7,7 +7,7 @@ A domain-agnostic agentic grid engine, launched with its first domain: **Media, 
 > **Current scope / known gaps vs. the Devpost requirements**
 > This build is an in-progress milestone for the [Agentic Cinema hackathon](https://agentic-cinema.devpost.com/), not a submission-ready entry yet.
 > 1. **Google Cloud Agent Builder / the Gemini Enterprise Agent Platform** — `lib/agent-backends/agent-builder.ts` calls `@google/genai` with `vertexai: true` against a real GCP project. Per the hackathon's own rules page, `@google/genai`/`google-genai` is an explicitly accepted SDK — the Vertex flag plus a real project is what makes this "Google Cloud" usage, not a separate Agent Engine/ADK deployment (which would also fight this app's per-request dynamic toolset). **Confirmed working end to end locally** via Application Default Credentials (`gcloud auth application-default login`), not a service-account key — this project's org policy enforces `iam.disableServiceAccountKeyCreation`, blocking key creation entirely, and Workload Identity Federation for Vercel wasn't implemented given the timeline. Two non-obvious fixes were needed to get a real response back: `GOOGLE_CLOUD_LOCATION` must be `"global"`, not a region like `us-central1` (newer Gemini models 404 on regional endpoints), and the Google account authenticating via ADC needs the "Agent Platform User" IAM role on the project — which may not be the account that created the project, if more than one is signed in. Practical result: **the live Vercel deployment still runs `gemini-direct`** (the AI Studio backend) — Vercel's serverless environment has no `gcloud` session to draw ADC from — while `agent-builder` is exercised locally (see `.env.local.example`'s Google Cloud section) and in the demo video. `gemini-direct` remains the default and stays fully functional either way.
-> 2. **A Partner Track integration** — done: ClickHouse (see "How Gemini connects to MCP" below and `lib/partner-mcp.ts`). Grafana remains a simulated preview only (`components/sponsor-integrations.tsx`); the Replit hosting-status preview that used to sit alongside it was removed as scope reduction (see that file's header comment for why).
+> 2. **A Partner Track integration** — done: ClickHouse (see "How Gemini connects to MCP" below and `lib/partner-mcp.ts`), confirmed working end to end against a real ClickHouse Cloud service. Grafana has the same real client implemented (`GrafanaPartnerMcpClient` in `lib/partner-mcp.ts`, via the official `mcp-grafana` binary + a direct Loki push for event ingestion) but is not yet verified against a real Grafana Cloud stack — set `PARTNER_MCP=grafana` and fill in the `GRAFANA_*` vars in `.env.local.example` to try it; until then the Integrations tab's Grafana preview (`components/sponsor-integrations.tsx`) stays labeled "Simulated". The Replit hosting-status preview that used to sit alongside these two was removed as scope reduction (see that file's header comment for why).
 
 Split-screen layout:
 
@@ -42,7 +42,7 @@ need your own key just to try it. Your own key is only needed to run the repo **
    never gets committed.
 4. `npm run dev`, then open http://localhost:3000.
 
-That's everything needed for the default setup (`AGENT_BACKEND=gemini-direct`, `PARTNER_MCP=clickhouse`). Every other variable in `.env.local.example` is commented with exactly what it's for and where to get it — fill in the `CLICKHOUSE_*` ones for a real ClickHouse Cloud connection, or the `GOOGLE_CLOUD_*` ones plus `AGENT_BACKEND=agent-builder` to run the agent through Vertex AI instead of AI Studio.
+That's everything needed for the default setup (`AGENT_BACKEND=gemini-direct`, `PARTNER_MCP=clickhouse`). Every other variable in `.env.local.example` is commented with exactly what it's for and where to get it — fill in the `CLICKHOUSE_*` ones for a real ClickHouse Cloud connection, the `GRAFANA_*` ones plus `PARTNER_MCP=grafana` (and download `mcp-grafana` into `.mcp-grafana/`, see the comment above those vars) for a real Grafana Cloud connection instead, or the `GOOGLE_CLOUD_*` ones plus `AGENT_BACKEND=agent-builder` to run the agent through Vertex AI instead of AI Studio.
 
 The **Judge Demo Guide** on the right walks through the headline scenario step by step — each step has a "Send to chat" button that fires the exact prompt, or use **Run full scenario** to drive steps 1–3 automatically.
 
@@ -55,7 +55,7 @@ lib/domains/cinema.ts    Domain 1: stream records, actions, eligibility rules
 lib/mcp-tools.ts         Tool schemas (MCP + Gemini) and the shared dispatcher
 lib/agent-prompt.ts      Domain-aware system instruction for Gemini
 lib/agent-backends/      AgentBackend seam: gemini-direct (AI Studio) + agent-builder (Vertex AI)
-lib/partner-mcp.ts       Partner MCP client: ClickHouse (live); Grafana/Replit not implemented
+lib/partner-mcp.ts       Partner MCP client: ClickHouse (live), Grafana (implemented, unverified); Replit not implemented
 hooks/use-grid-agent.ts  React state + tool handlers for one domain
 app/api/agent/route.ts   Thin, backend-agnostic relay (delegates to lib/agent-backends)
 components/              RelayGrid, Agent Chat, Action Card, Judge Demo Guide
