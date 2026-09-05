@@ -9,6 +9,18 @@ const nextConfig: NextConfig = {
   // require() it directly instead of bundling it, sidestepping the edge
   // build entirely for this package.
   serverExternalPackages: ["@modelcontextprotocol/sdk"],
+  // The vendored Linux mcp-grafana binary (vendor/mcp-grafana-linux-x64/,
+  // spawned by lib/partner-mcp.ts's GrafanaPartnerMcpClient) is only ever
+  // referenced via a runtime fs/child_process path, not a static import —
+  // Next's build-time file tracing can't see that on its own, so every API
+  // route that transitively imports lib/partner-mcp.ts needs it listed here
+  // explicitly, or the binary silently isn't in the deployed function at all.
+  outputFileTracingIncludes: {
+    "/api/agent": ["./vendor/mcp-grafana-linux-x64/**"],
+    "/api/sponsor-ingest": ["./vendor/mcp-grafana-linux-x64/**"],
+    "/api/partner-warmup": ["./vendor/mcp-grafana-linux-x64/**"],
+    "/api/partner-info": ["./vendor/mcp-grafana-linux-x64/**"],
+  },
   async headers() {
     return [
       {

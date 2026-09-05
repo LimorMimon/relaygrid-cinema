@@ -37,6 +37,7 @@
  * app/api/agent/route.ts, app/api/sponsor-ingest/route.ts, and
  * app/api/partner-warmup/route.ts.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -236,7 +237,25 @@ class GrafanaPartnerMcpClient implements PartnerMcpClient {
   }
 
   private async connect(): Promise<Client> {
-    const bin = path.join(process.cwd(), ".mcp-grafana", process.platform === "win32" ? "mcp-grafana.exe" : "mcp-grafana");
+    // On Vercel (any environment — process.env.VERCEL is set on every deploy,
+    // not just production), the function runs on Linux, and the git-ignored
+    // .mcp-grafana/ Windows .exe used for local dev was never going to work
+    // there anyway. vendor/mcp-grafana-linux-x64/ is committed to the repo
+    // specifically so Next.js's build-time file tracing bundles it into the
+    // deployed function — see that folder's own README for the full reason.
+    const bin = process.env.VERCEL
+      ? path.join(process.cwd(), "vendor", "mcp-grafana-linux-x64", "mcp-grafana")
+      : path.join(process.cwd(), ".mcp-grafana", process.platform === "win32" ? "mcp-grafana.exe" : "mcp-grafana");
+    if (process.env.VERCEL) {
+      // Git doesn't reliably preserve the executable bit through a Windows
+      // checkout -> GitHub -> Vercel build pipeline, so set it defensively
+      // right before spawning rather than trusting it survived deployment.
+      try {
+        fs.chmodSync(bin, 0o755);
+      } catch {
+        // Best-effort — if this fails, the spawn below will surface a clear EACCES instead.
+      }
+    }
     const transport = new StdioClientTransport({
       command: bin,
       args: ["-t", "stdio"],
