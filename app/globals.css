@@ -129,8 +129,25 @@ body {
     grid-template-rows: minmax(0, 1fr);
   }
 }
+/*
+  Fourth tier, wide desktop only: pending action cards get their own
+  column instead of stacking below whatever tab (Guide/Reports/Policies/
+  Integrations) happens to be open in the guide column — several pending
+  approvals no longer risk getting buried under long tab content. Below
+  this width there's no room for a 4th column, so they stay embedded in
+  guide exactly like every narrower tier (see rg-area-actions's
+  `hidden 2xl:flex` in cinema-grid-app.tsx, and its `2xl:hidden` twin
+  still inside rg-area-guide).
+*/
+@media (min-width: 1536px) {
+  .rg-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) minmax(280px, 340px) minmax(340px, 400px);
+    grid-template-areas: "grid guide actions chat";
+  }
+}
 .rg-area-grid { grid-area: grid; }
 .rg-area-guide { grid-area: guide; }
+.rg-area-actions { grid-area: actions; }
 .rg-area-chat { grid-area: chat; }
 
 @keyframes pulse-dot-alert {

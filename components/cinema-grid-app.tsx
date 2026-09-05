@@ -317,6 +317,19 @@ export default function CinemaGridApp() {
     executeAction(target);
   }
 
+  // Rendered in two places (rg-area-guide below 2xl, rg-area-actions from 2xl
+  // up — see globals.css's 1536px tier) so pending approvals never depend on
+  // which tab happens to be open once there's room for their own column.
+  const previewCards = previews.map((preview) => (
+    <ActionCard
+      key={preview.id}
+      preview={preview}
+      busy={executingId === preview.id}
+      onApprove={() => handleApprove(preview)}
+      onDismiss={() => dismissPreview(preview.id)}
+    />
+  ));
+
   async function runFullScenario() {
     if (autoRunning) return;
     resetSession();
@@ -551,16 +564,29 @@ export default function CinemaGridApp() {
           ) : (
             <SponsorIntegrations />
           )}
-          {previews.map((preview) => (
-            <ActionCard
-              key={preview.id}
-              preview={preview}
-              busy={executingId === preview.id}
-              onApprove={() => handleApprove(preview)}
-              onDismiss={() => dismissPreview(preview.id)}
-            />
-          ))}
+          {/* Below the 4th-column breakpoint, pending action cards stay right here, under whichever tab is open — 2xl:hidden below hands them to rg-area-actions instead once there's room for its own column. `contents` keeps them direct children of this flex column (so the existing gap-4 spacing still applies) rather than nested one div deeper. */}
+          <div className="contents 2xl:hidden">{previewCards}</div>
           {openReportResult && <ReportResultModal result={openReportResult} onClose={() => setOpenReportResult(null)} />}
+        </aside>
+
+        {/*
+          Wide-desktop-only 4th column (see the 1536px tier in globals.css) —
+          pending action cards get a column of their own instead of sharing
+          rg-area-guide with whatever tab is open, so several at once never
+          risk getting pushed below a long Reports/Policies list. Hidden
+          entirely below 2xl; rg-area-guide's `contents 2xl:hidden` block
+          above renders the same cards there instead.
+        */}
+        <aside className="rg-area-actions hidden min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 2xl:sticky 2xl:top-0 2xl:flex 2xl:h-[calc(100vh-4rem)] 2xl:min-h-0 2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0 2xl:p-5">
+          <div>
+            <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Pending Approvals</h3>
+            <p className="mt-0.5 text-[11px] text-ink-dim">Action cards awaiting Approve &amp; Execute.</p>
+          </div>
+          {previewCards.length > 0 ? (
+            previewCards
+          ) : (
+            <p className="text-[11px] leading-4 text-ink-faint">Nothing waiting on you right now.</p>
+          )}
         </aside>
 
         {/* Same reasoning as rg-area-guide above: h-full within its tablet grid row, absolute calc(100vh-4rem) once it owns a full desktop column. */}
