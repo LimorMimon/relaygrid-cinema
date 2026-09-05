@@ -109,9 +109,9 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-4" />
-              <col className="w-14" />
-              <col className="w-14" />
-              <col className="w-20" />
+              <col />
+              <col />
+              <col />
               <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
@@ -152,7 +152,7 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
                       <span className={`rounded border border-line-bright bg-panel-2 px-1 py-0.5 ${level === "warn" ? "text-caution" : "text-signal"}`}>{level}</span>
                     </td>
                     <td className="truncate px-1.5 pt-1.5 text-ink-dim" title={e.kind}>
-                      {e.kind}
+                      {kindLabel(e.kind)}
                     </td>
                     <td className="truncate px-1.5 pt-1.5 text-ink-dim" title={e.source}>
                       {e.source}
@@ -231,9 +231,9 @@ function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-4" />
-              <col className="w-11" />
-              <col className="w-16" />
-              <col className="w-11" />
+              <col />
+              <col />
+              <col />
               <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
