@@ -9,17 +9,22 @@
  *     ingestSponsorEventRemote -> app/api/sponsor-ingest/route.ts ->
  *     lib/partner-mcp.ts, into an actual ClickHouse Cloud table through the
  *     official mcp-clickhouse MCP server. LiveBadge says so.
- *   - Grafana is still a SIMULATION — no network call, no credentials exist
- *     yet — so it keeps the "simulated" badge, the same honesty the grid's
- *     own MCP Action Preview card already practices ("no changes made"
- *     until a human approves).
+ *   - Grafana is real whenever PARTNER_MCP=grafana is actually configured
+ *     server-side (same ingestSponsorEventRemote path, into a real Loki
+ *     stream via lib/partner-mcp.ts's GrafanaPartnerMcpClient) — GrafanaTab
+ *     asks app/api/partner-info/route.ts which partner is truly active and
+ *     only then swaps its badge from "Simulated" to "Live", the same
+ *     honesty the grid's own MCP Action Preview card already practices
+ *     ("no changes made" until a human approves). Only one partner is ever
+ *     active at a time, so when ClickHouse is configured instead, this tab
+ *     correctly falls back to "Simulated".
  * (A third, Replit hosting-status preview lived here too; removed as pure
  * scope reduction — its usefulness was always more limited than the other
  * two, since it modeled Replit as a *deployment target* for this app rather
  * than a sponsor-tech partner reacting to grid events the way Grafana/
  * ClickHouse do.)
  */
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, Database, Gauge, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useSponsorEvents } from "@/hooks/use-sponsor-events";
@@ -53,6 +58,18 @@ function LiveBadge() {
   );
 }
 
+/** Grafana's own live badge — deliberately separate from LiveBadge above (ClickHouse's) rather than a shared/parameterized component, so editing this one can never touch what the ClickHouse tab renders. */
+function GrafanaLiveBadge() {
+  return (
+    <Badge
+      className="border-good/40 bg-good-soft text-good"
+      title="Every event is also sent to app/api/sponsor-ingest, which pushes it into a real Grafana Cloud Loki stream (and exposes the official mcp-grafana MCP server's tools) via lib/partner-mcp.ts's GrafanaPartnerMcpClient."
+    >
+      <CheckCircle2 className="size-3" /> Live — written to real Grafana Cloud
+    </Badge>
+  );
+}
+
 function EmptyState({ label }: { label: string }) {
   return <p className="px-3 py-8 text-center text-[11px] leading-4 text-ink-faint">No {label} yet — trigger an action or add a policy rule to see one here.</p>;
 }
@@ -69,16 +86,16 @@ function grafanaLevel(kind: SponsorEvent["kind"]): "info" | "warn" {
  * "Detected fields" breakdown Grafana shows under a selected log line,
  * built from the same payload object that tab's JSON view uses.
  */
-function GrafanaTab({ events }: { events: SponsorEvent[] }) {
+function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-col items-start gap-1.5">
-        <SimulatedBadge />
+        {live ? <GrafanaLiveBadge /> : <SimulatedBadge />}
         <p className="text-[11px] leading-4 text-ink-dim">
-          What would be pushed to <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires, queryable in Explore as{" "}
-          <span className="font-display text-ink">{`{service="relaygrid"} | json`}</span>. Click a line to inspect its detected fields.
+          {live ? "Every event below is also pushed to" : "What would be pushed to"} <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires,
+          queryable in Explore as <span className="font-display text-ink">{`{service="relaygrid"} | json`}</span>. Click a line to inspect its detected fields.
         </p>
       </div>
       <div className="max-h-[420px] overflow-y-auto rounded border border-line-bright bg-void-2">
@@ -249,6 +266,18 @@ export function SponsorIntegrations() {
   const [tab, setTab] = useState<TabId>("grafana");
   const events = useSponsorEvents();
 
+  // Which partner MCP the server is actually configured with (see
+  // app/api/partner-info/route.ts) — truthfully reflects PARTNER_MCP, so
+  // GrafanaTab's badge can't silently claim "Live" or "Simulated" when it
+  // isn't actually true. Same pattern as cinema-grid-app.tsx's agentBackendId.
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/partner-info")
+      .then((res) => res.json())
+      .then((data: { id?: string }) => setPartnerId(data.id ?? null))
+      .catch(() => setPartnerId(null));
+  }, []);
+
   return (
     <section className="shrink-0 overflow-hidden rounded border border-line bg-panel">
       <div className="border-b border-line bg-panel-2 px-4 py-3">
@@ -274,7 +303,7 @@ export function SponsorIntegrations() {
 
       <div className="px-4 py-3">
         <p className="mb-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">{TABS.find((t) => t.id === tab)?.fullLabel}</p>
-        {tab === "grafana" ? <GrafanaTab events={events} /> : <ClickHouseTab events={events} />}
+        {tab === "grafana" ? <GrafanaTab events={events} live={partnerId === "grafana"} /> : <ClickHouseTab events={events} />}
       </div>
     </section>
   );
