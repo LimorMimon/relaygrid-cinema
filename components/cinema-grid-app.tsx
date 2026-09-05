@@ -440,7 +440,13 @@ export default function CinemaGridApp() {
               autoRunning={autoRunning}
             />
           ) : middleTab === "reports" ? (
-            <ReportsPanel reports={reports} savedReportSpecs={savedReportSpecs} />
+            <ReportsPanel
+              reports={reports}
+              savedReportSpecs={savedReportSpecs}
+              suggestions={reportSuggestions}
+              onSend={setInjectedPrompt}
+              onGenerateSuggestion={generateSuggestedReport}
+            />
           ) : (
             <SponsorIntegrations />
           )}
