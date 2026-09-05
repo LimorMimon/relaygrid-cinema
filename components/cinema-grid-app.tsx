@@ -391,7 +391,7 @@ export default function CinemaGridApp() {
         </div>
       </header>
 
-      <div className="rg-layout min-h-[calc(100vh-4rem)] w-full md:h-[calc(100vh-4rem)]">
+      <div className={`rg-layout min-h-[calc(100vh-4rem)] w-full md:h-[calc(100vh-4rem)] ${previewCards.length === 0 ? "rg-layout--no-actions" : ""}`}>
         <section className="rg-area-grid flex min-w-0 flex-col overflow-x-hidden p-4 sm:p-6 md:sticky md:top-0 md:h-[calc(100vh-4rem)]">
           <div className="shrink-0">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -576,18 +576,23 @@ export default function CinemaGridApp() {
           risk getting pushed below a long Reports/Policies list. Hidden
           entirely below 2xl; rg-area-guide's `contents 2xl:hidden` block
           above renders the same cards there instead.
+
+          Rendered only when there's actually something pending — not just
+          content-hidden with an empty-state message — so the `rg-layout--no-actions`
+          class above can drop this column's grid track entirely and let
+          rg-area-grid's minmax(0, 1fr) claim the freed width instead of
+          leaving a reserved-but-empty gap. guide/chat simply end up one
+          column to the left; nothing else needs to react to this.
         */}
-        <aside className="rg-area-actions hidden min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 2xl:sticky 2xl:top-0 2xl:flex 2xl:h-[calc(100vh-4rem)] 2xl:min-h-0 2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0 2xl:p-5">
-          <div>
-            <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Pending Approvals</h3>
-            <p className="mt-0.5 text-[11px] text-ink-dim">Action cards awaiting Approve &amp; Execute.</p>
-          </div>
-          {previewCards.length > 0 ? (
-            previewCards
-          ) : (
-            <p className="text-[11px] leading-4 text-ink-faint">Nothing waiting on you right now.</p>
-          )}
-        </aside>
+        {previewCards.length > 0 && (
+          <aside className="rg-area-actions hidden min-w-0 max-w-full flex-col gap-4 overflow-x-hidden border-t border-line bg-void-2 p-4 2xl:sticky 2xl:top-0 2xl:flex 2xl:h-[calc(100vh-4rem)] 2xl:min-h-0 2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0 2xl:p-5">
+            <div>
+              <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Pending Approvals</h3>
+              <p className="mt-0.5 text-[11px] text-ink-dim">Action cards awaiting Approve &amp; Execute.</p>
+            </div>
+            {previewCards}
+          </aside>
+        )}
 
         {/* Same reasoning as rg-area-guide above: h-full within its tablet grid row, absolute calc(100vh-4rem) once it owns a full desktop column. */}
         <aside className="rg-area-chat flex min-w-0 max-w-full flex-col overflow-x-hidden border-t border-line bg-void-2 p-4 sm:p-5 md:sticky md:top-0 md:h-full md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0 lg:h-[calc(100vh-4rem)]">
