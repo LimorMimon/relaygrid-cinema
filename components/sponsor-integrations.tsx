@@ -109,9 +109,9 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-4" />
+              <col className="w-20" />
               <col />
-              <col />
-              <col />
+              <col className="w-16" />
               <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
@@ -231,8 +231,8 @@ function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-4" />
-              <col />
-              <col />
+              <col className="w-20" />
+              <col className="w-20" />
               <col />
               <col />
             </colgroup>
