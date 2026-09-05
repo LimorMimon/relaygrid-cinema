@@ -227,19 +227,18 @@ export function ReportsPanel({
             <ul className="divide-y divide-line">
               {savedReportSpecs.map((spec) => (
                 <li key={spec.id} className="px-4 py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-display text-xs font-medium text-ink">{spec.title}</p>
-                      <p className="mt-0.5 truncate text-[10px] text-ink-faint">
-                        {spec.metric} by {spec.groupBy} · {spec.timeWindow}
-                      </p>
-                    </div>
-                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => handleRun(spec)}>
+                  {/* Title gets the full row and wraps instead of truncating — a long catalog title (e.g. "Degraded or failing streams by Channel / Program (all time)") was getting clipped by "Run Report" sharing its line. */}
+                  <p className="font-display text-xs font-medium leading-5 text-ink">{spec.title}</p>
+                  <p className="mt-0.5 text-[10px] text-ink-faint">
+                    {spec.metric} by {spec.groupBy} · {spec.timeWindow}
+                  </p>
+                  {/* Same rationale text a Suggested card shows before it's added — carried onto the spec (see runReport in cinema-grid-app.tsx) so it isn't lost once a report becomes Active. */}
+                  {spec.rationale && <p className="mt-1.5 text-[11px] leading-4 text-ink-faint">{spec.rationale}</p>}
+                  <div className="mt-2 flex justify-end">
+                    <Button size="sm" variant="outline" onClick={() => handleRun(spec)}>
                       <Play className="size-3.5" /> Run Report
                     </Button>
                   </div>
-                  {/* Same rationale text a Suggested card shows before it's added — carried onto the spec (see runReport in cinema-grid-app.tsx) so it isn't lost once a report becomes Active. */}
-                  {spec.rationale && <p className="mt-1.5 text-[11px] leading-4 text-ink-faint">{spec.rationale}</p>}
                 </li>
               ))}
             </ul>
