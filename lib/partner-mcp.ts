@@ -84,14 +84,22 @@ function chEscape(value: string): string {
 }
 
 /**
- * Connects to the official ClickHouse MCP server (`mcp-clickhouse`, a
- * Python/FastMCP server — no TypeScript equivalent exists) by spawning it
- * as a stdio subprocess from the venv at .mcp-clickhouse-venv/ (created via
- * `python -m venv .mcp-clickhouse-venv && .mcp-clickhouse-venv/Scripts/pip
- * install mcp-clickhouse`, kept out of the global Python install on
- * purpose). The connection is a lazy singleton — the subprocess starts on
- * the first tool call and is reused for the life of this server process,
- * not respawned per request.
+ * Two independent paths, deliberately not sharing one connection:
+ *   - listTools()/callTool() connect to the official ClickHouse MCP server
+ *     (`mcp-clickhouse`, a Python/FastMCP server — no TypeScript equivalent
+ *     exists) by spawning it as a stdio subprocess from the venv at
+ *     .mcp-clickhouse-venv/ (created via `python -m venv .mcp-clickhouse-venv
+ *     && .mcp-clickhouse-venv/Scripts/pip install mcp-clickhouse`, kept out
+ *     of the global Python install on purpose). Local dev only — there's no
+ *     Python runtime to spawn this from on Vercel, and no realistic way to
+ *     bundle one the way a single Go binary was vendored for Grafana.
+ *   - ingestEvent() (below, via runQuery()) instead calls ClickHouse Cloud's
+ *     own HTTP interface directly — no subprocess, works in any environment
+ *     including Vercel. This is what the Integrations tab's "Live" badge
+ *     for ClickHouse actually depends on.
+ * The MCP connection is a lazy singleton — the subprocess starts on the
+ * first tool call and is reused for the life of this server process, not
+ * respawned per request.
  */
 const POLICY_EVENTS_TABLE = "policy_events";
 
@@ -160,11 +168,37 @@ class ClickHousePartnerMcpClient implements PartnerMcpClient {
     return client.callTool({ name, arguments: (args as Record<string, unknown>) ?? {} });
   }
 
-  /** Runs one query through run_query, which mcp-clickhouse rejects unless CLICKHOUSE_ALLOW_WRITE_ACCESS=true is set (see .env.local.example) — a deliberate safety gate on the server's side, not something this client can bypass. */
+  /**
+   * Runs one query directly against ClickHouse Cloud's own HTTP interface —
+   * deliberately NOT through the mcp-clickhouse subprocess/`run_query` tool,
+   * unlike listTools()/callTool() above. That subprocess is a Python venv
+   * (.mcp-clickhouse-venv/) that only exists for local dev; there's no
+   * realistic way to bundle a full Python runtime into a Vercel serverless
+   * function the way a single Go binary was vendored for Grafana
+   * (vendor/mcp-grafana-linux-x64/) — so the real-time ingest path this
+   * client's badge in the UI actually depends on needs to work without that
+   * subprocess at all. ClickHouse's HTTP interface (a POST of raw SQL,
+   * Basic-authed) does exactly that in any environment. Success/failure now
+   * depends only on the ClickHouse user's own real database permissions —
+   * CLICKHOUSE_ALLOW_WRITE_ACCESS was strictly an mcp-clickhouse-side
+   * safety gate and has no bearing here.
+   */
   private async runQuery(query: string): Promise<void> {
-    const result = (await this.callTool("run_query", { query })) as { isError?: boolean; content?: Array<{ text?: string }> };
-    if (result?.isError) {
-      throw new Error(result.content?.[0]?.text ?? "ClickHouse query failed.");
+    const host = requireEnv("CLICKHOUSE_HOST");
+    const port = process.env.CLICKHOUSE_PORT ?? "8443";
+    const user = process.env.CLICKHOUSE_USER ?? "default";
+    const password = requireEnv("CLICKHOUSE_PASSWORD");
+    const secure = (process.env.CLICKHOUSE_SECURE ?? "true") !== "false";
+    const res = await fetch(`${secure ? "https" : "http"}://${host}:${port}/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`,
+        "Content-Type": "text/plain",
+      },
+      body: query,
+    });
+    if (!res.ok) {
+      throw new Error(`ClickHouse query failed: ${res.status} ${await res.text().catch(() => "")}`);
     }
   }
 

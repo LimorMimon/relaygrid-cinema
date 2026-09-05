@@ -5,21 +5,22 @@
  * narration (see lib/sponsor-event-bus.ts and hooks/use-grid-agent.ts's
  * publishSponsorEvent calls). Each tab renders that stream in its
  * partner's own shape — but they're not the same underneath:
- *   - ClickHouse is REAL: every event is also written, via
- *     ingestSponsorEventRemote -> app/api/sponsor-ingest/route.ts ->
- *     lib/partner-mcp.ts, into an actual ClickHouse Cloud table through the
- *     official mcp-clickhouse MCP server. LiveBadge says so.
- *   - Grafana is real whenever PARTNER_MCP includes "grafana" (it can name
- *     more than one partner at once, e.g. "clickhouse,grafana" — see
- *     lib/partner-mcp.ts's getPartnerMcpClients) — same
- *     ingestSponsorEventRemote path, into a real Loki stream via
- *     GrafanaPartnerMcpClient. GrafanaTab asks
- *     app/api/partner-info/route.ts which partners are truly active and
- *     only then swaps its badge from "Simulated" to "Live", the same
- *     honesty the grid's own MCP Action Preview card already practices
- *     ("no changes made" until a human approves). When Grafana isn't one
- *     of the active partners, this tab correctly falls back to "Simulated"
- *     regardless of what else is configured.
+ *   - ClickHouse and Grafana are each real whenever PARTNER_MCP includes
+ *     them (it can name more than one partner at once, e.g.
+ *     "clickhouse,grafana" — see lib/partner-mcp.ts's getPartnerMcpClients)
+ *     — the same ingestSponsorEventRemote path writes into a real
+ *     ClickHouse Cloud table or a real Grafana Cloud Loki stream depending
+ *     on which client. Both tabs ask app/api/partner-info/route.ts which
+ *     partners are truly active and only then swap their own badge from
+ *     "Simulated" to "Live", the same honesty the grid's own MCP Action
+ *     Preview card already practices ("no changes made" until a human
+ *     approves) — this matters concretely, not just in principle: on the
+ *     live Vercel deployment, only "grafana" is configured, so the
+ *     ClickHouse tab correctly shows "Simulated" there even though the
+ *     integration is fully real when ClickHouse *is* configured (e.g.
+ *     locally). Confirmed live the hard way — this tab used to hardcode
+ *     "Live" unconditionally, which was quietly false on that exact
+ *     deployment until this dynamic check replaced it.
  * (A third, Replit hosting-status preview lived here too; removed as pure
  * scope reduction — its usefulness was always more limited than the other
  * two, since it modeled Replit as a *deployment target* for this app rather
@@ -212,15 +213,15 @@ function kindLabel(kind: SponsorEvent["kind"]): string {
  * receives), so the tab reads as a query result you can drill into rather
  * than a debug log.
  */
-function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
+function ClickHouseTab({ events, live }: { events: SponsorEvent[]; live: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-col items-start gap-1.5">
-        <LiveBadge />
+        {live ? <LiveBadge /> : <SimulatedBadge />}
         <p className="text-[11px] leading-4 text-ink-dim">
-          Rows below are the local mirror for instant UI — the same events are pushed in the background into a real table, queryable as{" "}
+          {live ? "Rows below are the local mirror for instant UI — the same events are pushed in the background into a real table, queryable as" : "What would be pushed into a real table, queryable as"}{" "}
           <span className="font-display text-ink">SELECT * FROM policy_events ORDER BY timestamp DESC LIMIT 50</span>. Click a row to inspect its full payload.
         </p>
       </div>
@@ -340,7 +341,11 @@ export function SponsorIntegrations() {
 
       <div className="px-4 py-3">
         <p className="mb-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">{TABS.find((t) => t.id === tab)?.fullLabel}</p>
-        {tab === "grafana" ? <GrafanaTab events={events} live={activePartnerIds.includes("grafana")} /> : <ClickHouseTab events={events} />}
+        {tab === "grafana" ? (
+          <GrafanaTab events={events} live={activePartnerIds.includes("grafana")} />
+        ) : (
+          <ClickHouseTab events={events} live={activePartnerIds.includes("clickhouse")} />
+        )}
       </div>
     </section>
   );
