@@ -12,17 +12,22 @@ sent anywhere automatically.
       spawns the official `mcp-clickhouse` MCP server and writes every sponsor event into a
       real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
       — it's marked "Live", not "Simulated"). Grafana and Replit remain simulated previews.
-- [ ] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — code-complete,
-      **being verified locally**. `lib/agent-backends/agent-builder.ts` calls `@google/genai`
-      with `vertexai: true` against a real Google Cloud project (`google-genai`/`@google/genai`
-      is explicitly listed as an accepted SDK on the hackathon's rules page). Auth is via
-      Application Default Credentials (`gcloud auth application-default login`), not a
-      service-account key — this GCP project enforces `iam.disableServiceAccountKeyCreation`,
-      which blocks key creation outright, and Workload Identity Federation for Vercel wasn't
-      worth the remaining time. **Consequence: the live Vercel app stays on `gemini-direct`**
-      (Vercel has no `gcloud` session to draw ADC from) — `agent-builder` is demonstrated via
-      local run + the demo video, not the public URL. See `.env.local.example` for exact
-      setup steps and this trade-off spelled out.
+- [x] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — **confirmed
+      working end to end, locally.** `lib/agent-backends/agent-builder.ts` calls
+      `@google/genai` with `vertexai: true` against a real Google Cloud project
+      (`google-genai`/`@google/genai` is explicitly listed as an accepted SDK on the
+      hackathon's rules page); a real chat turn round-tripped through Vertex AI and
+      returned a correct, tool-calling response. Auth is via Application Default
+      Credentials (`gcloud auth application-default login`), not a service-account key —
+      this GCP project enforces `iam.disableServiceAccountKeyCreation`, which blocks key
+      creation outright, and Workload Identity Federation for Vercel wasn't worth the
+      remaining time. **Consequence: the live Vercel app stays on `gemini-direct`** (Vercel
+      has no `gcloud` session to draw ADC from) — `agent-builder` is demonstrated via local
+      run + the demo video, not the public URL. See `.env.local.example` for exact setup
+      steps and this trade-off spelled out — including two non-obvious fixes required
+      (`GOOGLE_CLOUD_LOCATION=global`, not a region; and the ADC-authenticated account
+      needs the "Agent Platform User" role, which may not be whichever account created the
+      project).
 
 Submitting before these are done risks disqualification on "Technological Implementation"
 — see the earlier gap analysis in `README.md`.

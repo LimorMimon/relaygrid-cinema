@@ -19,11 +19,17 @@ import { runGenAiTurn } from "./genai-shared";
  * Auth: GOOGLE_APPLICATION_CREDENTIALS_JSON holds the *entire contents* of
  * a service account key file, as one line — not a file path, since
  * Vercel's filesystem isn't a place to keep a secret file. That service
- * account needs the "Vertex AI User" IAM role on GOOGLE_CLOUD_PROJECT.
+ * account (or, for local dev via `gcloud auth application-default login`,
+ * the Google account authenticating) needs the "Agent Platform User" IAM
+ * role on GOOGLE_CLOUD_PROJECT.
+ *
+ * Location defaults to "global", not a region: confirmed live that newer
+ * Gemini models 404 ("Publisher Model ... was not found") on regional
+ * Vertex endpoints like us-central1 and are only reachable via "global".
  */
 export function createAgentBuilderBackend(): AgentBackend {
   const project = process.env.GOOGLE_CLOUD_PROJECT;
-  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+  const location = process.env.GOOGLE_CLOUD_LOCATION || "global";
   const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 

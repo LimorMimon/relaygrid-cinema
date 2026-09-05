@@ -46,6 +46,17 @@ export default function CinemaGridApp() {
   const [middleTab, setMiddleTab] = useState<"guide" | "reports" | "policies" | "integrations">("guide");
   const chatRef = useRef<AgentChatPanelHandle>(null);
 
+  // Which AgentBackend the server is actually running (see
+  // app/api/agent-backend-info/route.ts) — truthfully reflects AGENT_BACKEND,
+  // never hardcoded, so the header badge can't silently drift from reality.
+  const [agentBackendId, setAgentBackendId] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/agent-backend-info")
+      .then((res) => res.json())
+      .then((data: { id?: string }) => setAgentBackendId(data.id ?? null))
+      .catch(() => setAgentBackendId(null));
+  }, []);
+
   const policyOptions = useMemo<PolicyOptions<StreamRecord, CinemaActionId>>(
     () => ({
       resolveRule: resolveCinemaPolicyRule,
@@ -228,7 +239,20 @@ export default function CinemaGridApp() {
             />
             {webmcpReady ? "WebMCP Live" : "WebMCP Offline"}
           </Badge>
-          <Badge className="border-line-bright bg-panel-2 text-ink-dim">Gemini</Badge>
+          <Badge
+            title={
+              agentBackendId === "agent-builder"
+                ? "Gemini function-calling routed through Vertex AI on a real Google Cloud project (lib/agent-backends/agent-builder.ts)."
+                : "Gemini function-calling via the public AI Studio API (lib/agent-backends/gemini-direct.ts)."
+            }
+            className={
+              agentBackendId === "agent-builder"
+                ? "border-signal/35 bg-signal-soft text-signal"
+                : "border-line-bright bg-panel-2 text-ink-dim"
+            }
+          >
+            {agentBackendId === "agent-builder" ? "Gemini · Vertex AI" : "Gemini API"}
+          </Badge>
         </div>
       </header>
 
