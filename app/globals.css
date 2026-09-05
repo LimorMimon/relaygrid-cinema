@@ -122,7 +122,7 @@ body {
 }
 @media (min-width: 1024px) {
   .rg-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(340px, 400px);
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 420px) minmax(340px, 400px);
     grid-template-areas: "grid guide chat";
     /* Back to a single row here — the tablet tier's two-row split above
        must not carry over, or it'd split this row's height in two. */
@@ -141,7 +141,7 @@ body {
 */
 @media (min-width: 1536px) {
   .rg-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) minmax(280px, 340px) minmax(340px, 400px);
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px) minmax(280px, 340px) minmax(340px, 400px);
     grid-template-areas: "grid guide actions chat";
   }
   /* Nothing pending right now — drop the actions column's track entirely
@@ -150,7 +150,7 @@ body {
      keep their own widths and simply sit one column to the left; nothing
      about them needs to change for this to work. */
   .rg-layout--no-actions {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) minmax(340px, 400px);
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px) minmax(340px, 400px);
     grid-template-areas: "grid guide chat";
   }
 }

@@ -110,9 +110,9 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
             <colgroup>
               <col className="w-4" />
               <col className="w-11" />
-              <col className="w-9" />
-              <col className="w-16" />
               <col className="w-11" />
+              <col className="w-16" />
+              <col className="w-14" />
               <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
