@@ -123,26 +123,27 @@ export function PolicyRulesPanel({
 
   return (
     <section className="shrink-0 overflow-hidden rounded border border-line bg-panel">
-      <div className="flex items-start justify-between gap-3 border-b border-line bg-panel-2 px-4 py-3">
-        <div className="flex items-start gap-2">
-          <Zap className="mt-0.5 size-4 shrink-0 text-auto" />
-          <div>
-            <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Policy Rules</h3>
-            <p className="mt-0.5 text-[11px] text-ink-dim">Standing automation, evaluated continuously.</p>
+      <div className="border-b border-line bg-panel-2 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <Zap className="mt-0.5 size-4 shrink-0 text-auto" />
+            <div>
+              <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-ink">Policy Rules</h3>
+              <p className="mt-0.5 text-[11px] text-ink-dim">Standing automation, evaluated continuously.</p>
+            </div>
           </div>
+          <Badge className="shrink-0 border-auto/40 bg-auto-soft text-auto">{policyRules.length} active</Badge>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge className="border-auto/40 bg-auto-soft text-auto">{policyRules.length} active</Badge>
-          <button
-            type="button"
-            title="Simulate every active rule against live data and against every other rule, all at once"
-            onClick={() => setAllRulesCheckOpen(true)}
-            disabled={policyRules.length === 0}
-            className="flex items-center gap-1.5 rounded border border-line-bright bg-panel-2 px-2 py-1 font-display text-[10px] font-semibold uppercase tracking-wider text-ink-dim hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ShieldCheck className="size-3" /> Check All Rules
-          </button>
-        </div>
+        {/* Its own row, not squeezed onto the title row next to the badge — "Check All Rules" plus "N active" was overflowing this sidebar's width and getting clipped. */}
+        <button
+          type="button"
+          title="Simulate every active rule against live data and against every other rule, all at once"
+          onClick={() => setAllRulesCheckOpen(true)}
+          disabled={policyRules.length === 0}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded border border-line-bright bg-panel-2 px-2 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider text-ink-dim hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ShieldCheck className="size-3" /> Check All Rules
+        </button>
       </div>
 
       <div className="flex gap-1 border-b border-line bg-panel-2/60 px-3 pt-2">
