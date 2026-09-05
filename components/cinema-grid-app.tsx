@@ -404,7 +404,7 @@ export default function CinemaGridApp() {
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {stats.map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded border border-line bg-panel p-4">
-                  <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                  <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-ink-dim">
                     <span>{label}</span>
                     <Icon className="size-3.5 text-ink-faint" />
                   </div>

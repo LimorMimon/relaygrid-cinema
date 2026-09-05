@@ -283,7 +283,7 @@ export function PolicyRulesPanel({
                             simple one-condition rule stays exactly one line. */}
                         <div className="ml-[1.4rem] mt-1.5 space-y-0.5 rounded border border-line-bright/50 bg-void-2/60 px-2 py-1.5 font-display text-[10px] leading-4">
                           {logicLines.map((line, li) => (
-                            <p key={li} className={li === 0 ? "text-ink-dim" : "pl-3 text-ink-faint"}>
+                            <p key={li} className={li === 0 ? "text-ink" : "pl-3 text-ink-dim"}>
                               {li === 0 ? "IF " : ""}
                               {line}
                             </p>
@@ -291,7 +291,7 @@ export function PolicyRulesPanel({
                         </div>
 
                         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pl-[1.4rem]">
-                          <p className="text-[11px] text-ink-faint">→ {actionLabel(rule.actionId)}</p>
+                          <p className="text-[11px] text-ink-dim">→ {actionLabel(rule.actionId)}</p>
                           {isPending && (
                             <span className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-wide text-caution">
                               <span className="size-1.5 animate-pulse-dot-caution rounded-full bg-caution" />

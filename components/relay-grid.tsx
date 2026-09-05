@@ -83,7 +83,7 @@ export function RelayGrid({
             ? `${totalRecords.toLocaleString()} streams`
             : `${totalMatches.toLocaleString()} of ${totalRecords.toLocaleString()} streams`}
         </span>
-        <span className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-ink-dim">
           Showing {visibleBatch.length.toLocaleString()} · {Math.max(0, totalMatches - visibleBatch.length).toLocaleString()} more
           match
         </span>
@@ -92,7 +92,7 @@ export function RelayGrid({
           header row stays pinned (sticky) while the 220 rows scroll under it. */}
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full min-w-[860px] border-collapse text-[13px]">
-          <thead className="sticky top-0 z-10 border-b border-line bg-void-2 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          <thead className="sticky top-0 z-10 border-b border-line bg-void-2 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-ink-dim">
             <tr>
               {["Stream ID", "Channel / Program", "CDN Provider", "Bitrate (Mbps)", "FPS", "Audio Status", "Subtitle Sync", "Status Flags", ""].map(
                 (label) => (

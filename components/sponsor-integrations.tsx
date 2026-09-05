@@ -135,7 +135,7 @@ function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
               <col className="w-11" />
               <col />
             </colgroup>
-            <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">
+            <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
               <tr>
                 <th className="px-1.5 py-1.5" aria-hidden="true" />
                 <th className="truncate px-1.5 py-1.5">Time</th>
@@ -157,7 +157,7 @@ function ClickHouseTab({ events }: { events: SponsorEvent[] }) {
                       <td className="px-1.5 py-1.5 text-ink-faint">
                         {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
                       </td>
-                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-faint" title={formatClock(new Date(e.timestamp))}>
+                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
                         {formatTimeOnly(new Date(e.timestamp))}
                       </td>
                       <td className="truncate px-1.5 py-1.5" title={e.kind}>
