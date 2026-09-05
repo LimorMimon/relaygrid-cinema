@@ -752,6 +752,45 @@ export const DEFAULT_POLICY_RULES: PolicyRule<StreamRecord, CinemaActionId>[] = 
     riskLevel: "REQUIRES_APPROVAL",
     createdAt: SEEDED_AT,
   },
+  // --- Premiere Protection (the one rule specific to cinema, not broadcast
+  // ops in general) ---------------------------------------------------
+  //
+  // Every other default rule treats all channels the same — a fair policy
+  // for a live sports feed or a rolling news desk, where a viewer tolerates
+  // a brief quality dip. It's the wrong policy for the three channels that
+  // are actually theatrical/festival premieres: a paying audience watching
+  // a feature presentation or a festival selection notices a quality dip
+  // immediately, and there's no "next play" to smooth it over the way there
+  // is in a live match. So this rule lowers the failover-escalation bar
+  // specifically for those three channels — 4.5 Mbps instead of the general
+  // Rule #3's 2.0 Mbps — trading a few more human-reviewed reroutes for
+  // catching a premiere's quality dip before the audience does. Still
+  // REQUIRES_APPROVAL like every CDN reroute: earlier warning, not more
+  // autonomy.
+  {
+    id: "policy-default-premiere-early-failover",
+    description:
+      "Bitrate below 4.5 Mbps on a premiere/festival channel → escalate a failover review early (routine channels only escalate below 2.0 Mbps)",
+    root: {
+      kind: "group",
+      operator: "AND",
+      children: [
+        {
+          kind: "group",
+          operator: "OR",
+          children: [
+            { kind: "condition", field: "channel", operator: "eq", value: "CineMax Prime — Feature Presentation" },
+            { kind: "condition", field: "channel", operator: "eq", value: "StudioFeed 4K — Premiere Night" },
+            { kind: "condition", field: "channel", operator: "eq", value: "IndieReel — Festival Selects" },
+          ],
+        },
+        { kind: "condition", field: "bitrateMbps", operator: "lt", value: 4.5 },
+      ],
+    },
+    actionId: "switch_failover_cdn",
+    riskLevel: "REQUIRES_APPROVAL",
+    createdAt: SEEDED_AT,
+  },
 ];
 
 /**
