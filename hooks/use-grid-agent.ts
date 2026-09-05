@@ -151,10 +151,18 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   }, [results, domain.batchSize, recentlyChangedIds]);
   const fieldNames = useMemo(() => new Set(domain.fields.map((f) => f.key)), [domain]);
 
+  // Assigned directly during render, not in a useEffect — an effect only
+  // fires after the commit that produced these values, so any tool handler
+  // it feeds (execute_action, callTool, ...) could read a ref that's one
+  // commit behind whatever's actually on screen if it runs in that window
+  // (confirmed live: a click landing there made execute_action's preview
+  // lookup fail silently — reject() catches into callTool's `ok: false`,
+  // logged with console.error and nothing else, so the card just didn't
+  // close on the first click). Writing a "latest values" ref straight in
+  // the render body has no such gap — this render's values are in place
+  // before this render's JSX (and therefore any click on it) can exist.
   const live = useRef({ records, query, results, previews, audit, domain, policyRules });
-  useEffect(() => {
-    live.current = { records, query, results, previews, audit, domain, policyRules };
-  }, [records, query, results, previews, audit, domain, policyRules]);
+  live.current = { records, query, results, previews, audit, domain, policyRules };
 
   const reject = useCallback((request: string, message: string): never => {
     setAgentNotice({ request, message });
