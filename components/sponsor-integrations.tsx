@@ -235,7 +235,6 @@ function ClickHouseTab({ events, live }: { events: SponsorEvent[]; live: boolean
               <col className="w-20" />
               <col className="w-20" />
               <col />
-              <col />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
               <tr>
@@ -243,48 +242,53 @@ function ClickHouseTab({ events, live }: { events: SponsorEvent[]; live: boolean
                 <th className="truncate px-1.5 py-1.5">Time</th>
                 <th className="truncate px-1.5 py-1.5">Kind</th>
                 <th className="truncate px-1.5 py-1.5">Source</th>
-                <th className="truncate px-1.5 py-1.5">Summary</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line/70">
-              {events.map((e) => {
-                const isOpen = expandedId === e.id;
-                return (
-                  <Fragment key={e.id}>
-                    <tr
-                      onClick={() => setExpandedId(isOpen ? null : e.id)}
-                      aria-expanded={isOpen}
-                      className={`cursor-pointer font-display text-[10.5px] transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
-                    >
-                      <td className="px-1.5 py-1.5 text-ink-faint">
-                        {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
-                        {formatTimeOnly(new Date(e.timestamp))}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5" title={e.kind}>
-                        <span className="rounded border border-line-bright bg-panel-2 px-1 py-0.5 text-signal">{kindLabel(e.kind)}</span>
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.source}>
-                        {e.source}
-                      </td>
-                      <td className="truncate px-1.5 py-1.5 text-ink" title={e.summary}>
-                        {e.summary}
+            {events.map((e) => {
+              const isOpen = expandedId === e.id;
+              // Summary gets its own full-width line below the metadata row,
+              // same reasoning and mechanics as GrafanaTab's Message line —
+              // table-fixed columns can't reflow just because the panel is
+              // wider, so a dedicated Summary column was always going to
+              // truncate no matter how much room it got. One <tbody> per
+              // entry keeps the row separator between entries only, never
+              // between a metadata row and its own summary line underneath.
+              const rowClass = `cursor-pointer font-display transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`;
+              const toggle = () => setExpandedId(isOpen ? null : e.id);
+              return (
+                <tbody key={e.id} className="border-t border-line/70 first:border-t-0">
+                  <tr onClick={toggle} aria-expanded={isOpen} className={`${rowClass} text-[10.5px]`}>
+                    <td className="px-1.5 pt-1.5 text-ink-faint">
+                      {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
+                      {formatTimeOnly(new Date(e.timestamp))}
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5" title={e.kind}>
+                      <span className="rounded border border-line-bright bg-panel-2 px-1 py-0.5 text-signal">{kindLabel(e.kind)}</span>
+                    </td>
+                    <td className="truncate px-1.5 pt-1.5 text-ink-dim" title={e.source}>
+                      {e.source}
+                    </td>
+                  </tr>
+                  <tr onClick={toggle} aria-expanded={isOpen} className={rowClass}>
+                    <td />
+                    <td colSpan={3} className="px-1.5 pb-1.5 font-display text-[10.5px] leading-5 text-ink">
+                      {e.summary}
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={4} className="bg-void px-3 py-2">
+                        <pre className="overflow-x-auto whitespace-pre-wrap break-all font-display text-[10.5px] leading-5 text-ink-dim">
+                          {JSON.stringify({ id: e.id, timestamp: e.timestamp, kind: e.kind, source: e.source, ...e.payload }, null, 2)}
+                        </pre>
                       </td>
                     </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={5} className="bg-void px-3 py-2">
-                          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-display text-[10.5px] leading-5 text-ink-dim">
-                            {JSON.stringify({ id: e.id, timestamp: e.timestamp, kind: e.kind, source: e.source, ...e.payload }, null, 2)}
-                          </pre>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
+                  )}
+                </tbody>
+              );
+            })}
           </table>
         )}
       </div>
