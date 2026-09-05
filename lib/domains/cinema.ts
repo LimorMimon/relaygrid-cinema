@@ -20,6 +20,7 @@ import type {
   QueryNode,
   ReportResult,
   ReportSpec,
+  ReportSuggestion,
   ReportTimeWindow,
   Transition,
 } from "@/lib/grid-engine";
@@ -428,6 +429,101 @@ export function resolveCinemaReport(
   const matched = records.filter((r) => issueMetric.isIssue(r) && withinReportWindow(r.lastUpdated, timeWindow));
   const rows = groupAndCount(matched, (r) => String(r[groupField]));
   return { spec, rows, total: matched.length, generatedAt: new Date().toISOString() };
+}
+
+/**
+ * Curated, not a full metric×group_by cross product (5×4 would be mostly
+ * noise) — picked to cover every filter_metric exactly once, each paired
+ * with the groupBy an ops conversation actually reaches for first (which
+ * CDN provider is this concentrated on?), mirroring
+ * POLICY_RULE_SUGGESTION_CATALOG's "curated, not generated" approach below.
+ */
+type ReportSuggestionTemplate = {
+  key: string;
+  title: string;
+  rationale: string;
+  filterMetric: string;
+  groupBy: string;
+  timeWindow: ReportTimeWindow;
+};
+
+const REPORT_SUGGESTION_CATALOG: ReportSuggestionTemplate[] = [
+  {
+    key: "bitrate-by-cdn-24h",
+    title: "Low-bitrate streams by CDN provider (last 24h)",
+    rationale: "Bitrate collapse (<3 Mbps) is usually the leading indicator that later shows up as an audio or subtitle failure — catching it here catches the root cause, not just the symptom.",
+    filterMetric: "bitrate",
+    groupBy: "cdn_provider",
+    timeWindow: "24h",
+  },
+  {
+    key: "audio-by-cdn-24h",
+    title: "Audio issues by CDN provider (last 24h)",
+    rationale: "Whether audio problems cluster on one provider or spread evenly points at a provider-side cause vs. isolated device/encoder issues.",
+    filterMetric: "audio_status",
+    groupBy: "cdn_provider",
+    timeWindow: "24h",
+  },
+  {
+    key: "subtitles-by-cdn-24h",
+    title: "Subtitle sync issues by CDN provider (last 24h)",
+    rationale: "The same clustering question for caption drift/missing tracks — a CDN-wide caption pipeline problem looks very different from a handful of isolated streams.",
+    filterMetric: "subtitle_sync",
+    groupBy: "cdn_provider",
+    timeWindow: "24h",
+  },
+  {
+    key: "status-by-cdn-all",
+    title: "Degraded or failing streams by CDN provider (all time)",
+    rationale: "A running tally of which provider carries the most unhealthy streams overall — a provider-performance conversation, not just today's incidents.",
+    filterMetric: "status",
+    groupBy: "cdn_provider",
+    timeWindow: "all",
+  },
+  {
+    key: "auto-remediation-by-cdn-24h",
+    title: "Auto-remediations by CDN provider (last 24h)",
+    rationale: "How concentrated the policy engine's autonomous fixes are on one provider — a high count there is either that provider's real instability, or a sign a rule is mis-targeted.",
+    filterMetric: "auto_remediation_count",
+    groupBy: "cdn_provider",
+    timeWindow: "24h",
+  },
+];
+
+/**
+ * Deterministic — computed from real current data (each candidate's
+ * matchCount runs through the exact same resolveCinemaReport the "Add"
+ * button will call), never invented. Excludes anything already saved
+ * (same metric + groupBy + timeWindow), so the list only ever shows
+ * genuinely new suggestions.
+ */
+export function listCinemaReportSuggestions(
+  records: StreamRecord[],
+  audit: AuditEntry<StreamRecord, CinemaActionId>[],
+  savedReportSpecs: ReportSpec[],
+): ReportSuggestion[] {
+  return REPORT_SUGGESTION_CATALOG.filter(
+    (c) => !savedReportSpecs.some((s) => s.metric === c.filterMetric && s.groupBy === c.groupBy && s.timeWindow === c.timeWindow),
+  )
+    .map((c) => {
+      const result = resolveCinemaReport(records, audit, {
+        report_title: c.title,
+        time_window: c.timeWindow,
+        filter_metric: c.filterMetric,
+        group_by: c.groupBy,
+        save_report: false,
+      });
+      return {
+        key: c.key,
+        title: c.title,
+        rationale: c.rationale,
+        filterMetric: c.filterMetric,
+        groupBy: c.groupBy,
+        timeWindow: c.timeWindow,
+        matchCount: "error" in result ? 0 : result.total,
+      };
+    })
+    .sort((a, b) => b.matchCount - a.matchCount);
 }
 
 // --- Default policy rules ---------------------------------------------

@@ -27,12 +27,13 @@ import {
   resolveCinemaReport,
   listPolicyRuleSuggestions,
   resolveSuggestedPolicyRule,
+  listCinemaReportSuggestions,
   injectRandomIncident,
   DEFAULT_POLICY_RULES,
   type StreamRecord,
   type CinemaActionId,
 } from "@/lib/domains/cinema";
-import type { PolicySuggestion } from "@/lib/grid-engine";
+import type { PolicySuggestion, ReportSuggestion } from "@/lib/grid-engine";
 import { buildSystemInstruction } from "@/lib/agent-prompt";
 
 const systemInstruction = buildSystemInstruction(cinemaDomain);
@@ -154,6 +155,26 @@ export default function CinemaGridApp() {
   // them once up front rather than waiting for the user to open the tab.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refreshSuggestions(); }, []);
+
+  // Report suggestions are pure derived data (no MCP round-trip needed,
+  // unlike policy-rule suggestions) — recomputed live whenever the grid,
+  // audit trail, or saved-report list changes, so match counts never go stale.
+  const reportSuggestions = useMemo(
+    () => listCinemaReportSuggestions(records, audit, savedReportSpecs),
+    [records, audit, savedReportSpecs],
+  );
+
+  function generateSuggestedReport(suggestion: ReportSuggestion) {
+    const args = {
+      report_title: suggestion.title,
+      time_window: suggestion.timeWindow,
+      filter_metric: suggestion.filterMetric,
+      group_by: suggestion.groupBy,
+      save_report: true,
+    };
+    const outcome = callTool("generate_analytics_report", args);
+    chatRef.current?.logToolResult("generate_analytics_report", args, outcome);
+  }
 
   // execute_action stays out of Gemini's toolset — only a human click on the
   // action card may ever run it. add_policy_rule IS exposed: creating a rule

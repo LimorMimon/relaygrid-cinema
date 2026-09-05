@@ -418,6 +418,18 @@ export type AuditEntry<TRecord, TActionId extends string = string> = {
 
 export type ReportTimeWindow = "1h" | "24h" | "7d" | "all";
 
+/** A candidate report computed from real current data, not yet generated — the read-only half of the report-suggestion flow (mirrors PolicySuggestion above). */
+export type ReportSuggestion = {
+  key: string;
+  title: string;
+  rationale: string;
+  filterMetric: string;
+  groupBy: string;
+  timeWindow: ReportTimeWindow;
+  /** How many rows this report would actually return right now, computed by running the real reporting engine — not a guess. */
+  matchCount: number;
+};
+
 /** A saved report configuration — re-runnable, independent of any one result. */
 export type ReportSpec = {
   id: string;
