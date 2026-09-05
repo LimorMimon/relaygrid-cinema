@@ -82,11 +82,13 @@ function grafanaLevel(kind: SponsorEvent["kind"]): "info" | "warn" {
 }
 
 /**
- * Renders the live event stream as a Grafana Explore "Logs" panel: a LogQL
- * query line, level-colored log lines newest first, and — mirroring the
- * ClickHouse tab's click-to-expand row — clicking a line opens the
- * "Detected fields" breakdown Grafana shows under a selected log line,
- * built from the same payload object that tab's JSON view uses.
+ * Renders the live event stream as an actual Grafana Explore "Logs" table
+ * view — Time / Level / Kind / Source / Message columns, newest first,
+ * mirroring the ClickHouse tab's real query-result table (same row/expand
+ * mechanics, same column-header shape) rather than raw Loki log-line text.
+ * Clicking a row still opens the "Detected fields" breakdown Grafana shows
+ * under a selected log line — that part stays Grafana's own vocabulary,
+ * built from the same payload object ClickHouse's JSON view uses.
  */
 function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -96,61 +98,85 @@ function GrafanaTab({ events, live }: { events: SponsorEvent[]; live: boolean })
       <div className="flex flex-col items-start gap-1.5">
         {live ? <GrafanaLiveBadge /> : <SimulatedBadge />}
         <p className="text-[11px] leading-4 text-ink-dim">
-          {live ? "Every event below is also pushed to" : "What would be pushed to"} <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires,
-          queryable in Explore as <span className="font-display text-ink">{`{service="relaygrid"} | json`}</span>. Click a line to inspect its detected fields.
+          {live ? "Rows below are also pushed to" : "What would be pushed to"} <span className="font-display text-ink">loki.grafana.net/loki/api/v1/push</span> as each action fires,
+          queryable in Explore as <span className="font-display text-ink">{`{service="relaygrid"} | json`}</span>. Click a row to inspect its detected fields.
         </p>
       </div>
       <div className="max-h-[420px] overflow-y-auto rounded border border-line-bright bg-void-2">
         {events.length === 0 ? (
           <EmptyState label="log lines" />
         ) : (
-          <div className="divide-y divide-line/70 font-display text-[10.5px] leading-5">
-            {events.map((e) => {
-              const level = grafanaLevel(e.kind);
-              const isOpen = expandedId === e.id;
-              return (
-                <Fragment key={e.id}>
-                  <div
-                    onClick={() => setExpandedId(isOpen ? null : e.id)}
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={isOpen}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        setExpandedId(isOpen ? null : e.id);
-                      }
-                    }}
-                    className={`cursor-pointer px-3 py-1.5 transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
-                  >
-                    <span className="text-ink-faint">
-                      {isOpen ? <ChevronDown className="-mt-0.5 inline size-3" /> : <ChevronRight className="-mt-0.5 inline size-3" />}
-                    </span>{" "}
-                    <span className="text-ink-faint">{formatClock(new Date(e.timestamp))}</span>{" "}
-                    <span className={level === "warn" ? "text-caution" : "text-signal"}>level={level}</span>{" "}
-                    <span className="text-ink-dim">source={e.source}</span>{" "}
-                    <span className="text-ink-dim">kind={e.kind}</span>{" "}
-                    <span className="text-ink">msg=&quot;{e.summary}&quot;</span>
-                  </div>
-                  {isOpen && (
-                    <div className="bg-void px-3 py-2">
-                      <p className="mb-1 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">Detected fields</p>
-                      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-display text-[10.5px] leading-5">
-                        {Object.entries({ id: e.id, timestamp: new Date(e.timestamp).toISOString(), level, source: e.source, kind: e.kind, ...e.payload }).map(([key, value]) => (
-                          <Fragment key={key}>
-                            <dt className="text-ink-faint">{key}</dt>
-                            <dd className="truncate text-ink-dim" title={typeof value === "object" ? JSON.stringify(value) : String(value)}>
-                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                            </dd>
-                          </Fragment>
-                        ))}
-                      </dl>
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
-          </div>
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-4" />
+              <col className="w-11" />
+              <col className="w-9" />
+              <col className="w-16" />
+              <col className="w-11" />
+              <col />
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-panel-2 font-display text-[9px] font-bold uppercase tracking-wider text-ink-dim">
+              <tr>
+                <th className="px-1.5 py-1.5" aria-hidden="true" />
+                <th className="truncate px-1.5 py-1.5">Time</th>
+                <th className="truncate px-1.5 py-1.5">Level</th>
+                <th className="truncate px-1.5 py-1.5">Kind</th>
+                <th className="truncate px-1.5 py-1.5">Source</th>
+                <th className="truncate px-1.5 py-1.5">Message</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/70">
+              {events.map((e) => {
+                const level = grafanaLevel(e.kind);
+                const isOpen = expandedId === e.id;
+                return (
+                  <Fragment key={e.id}>
+                    <tr
+                      onClick={() => setExpandedId(isOpen ? null : e.id)}
+                      aria-expanded={isOpen}
+                      className={`cursor-pointer font-display text-[10.5px] transition-colors ${isOpen ? "bg-panel-2/60" : "hover:bg-panel-2/40"}`}
+                    >
+                      <td className="px-1.5 py-1.5 text-ink-faint">
+                        {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 tabular-nums text-ink-dim" title={formatClock(new Date(e.timestamp))}>
+                        {formatTimeOnly(new Date(e.timestamp))}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5">
+                        <span className={`rounded border border-line-bright bg-panel-2 px-1 py-0.5 ${level === "warn" ? "text-caution" : "text-signal"}`}>{level}</span>
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.kind}>
+                        {e.kind}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 text-ink-dim" title={e.source}>
+                        {e.source}
+                      </td>
+                      <td className="truncate px-1.5 py-1.5 text-ink" title={e.summary}>
+                        {e.summary}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={6} className="bg-void px-3 py-2">
+                          <p className="mb-1 font-display text-[9px] font-bold uppercase tracking-wider text-ink-faint">Detected fields</p>
+                          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-display text-[10.5px] leading-5">
+                            {Object.entries({ id: e.id, timestamp: new Date(e.timestamp).toISOString(), level, source: e.source, kind: e.kind, ...e.payload }).map(([key, value]) => (
+                              <Fragment key={key}>
+                                <dt className="text-ink-faint">{key}</dt>
+                                <dd className="truncate text-ink-dim" title={typeof value === "object" ? JSON.stringify(value) : String(value)}>
+                                  {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                                </dd>
+                              </Fragment>
+                            ))}
+                          </dl>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
       <p className="text-[10px] text-ink-faint">{events.length.toLocaleString()} log line{events.length === 1 ? "" : "s"}</p>
