@@ -13,13 +13,16 @@ sent anywhere automatically.
       real `policy_events` table on ClickHouse Cloud (see the ClickHouse tab in Integrations
       — it's marked "Live", not "Simulated"). Grafana and Replit remain simulated previews.
 - [ ] **Google Cloud Agent Builder / Gemini Enterprise Agent Platform** — code-complete,
-      **not yet verified against a live GCP project**. `lib/agent-backends/agent-builder.ts`
-      calls `@google/genai` with `vertexai: true` against a real Google Cloud project
-      (`google-genai`/`@google/genai` is explicitly listed as an accepted SDK on the
-      hackathon's rules page). Needs: a GCP project with Vertex AI API enabled, a service
-      account with the "Vertex AI User" role, and its JSON key + the project ID/region
-      filled into `.env.local`'s `GOOGLE_CLOUD_*` variables — then set
-      `AGENT_BACKEND=agent-builder` and confirm a chat turn actually round-trips.
+      **being verified locally**. `lib/agent-backends/agent-builder.ts` calls `@google/genai`
+      with `vertexai: true` against a real Google Cloud project (`google-genai`/`@google/genai`
+      is explicitly listed as an accepted SDK on the hackathon's rules page). Auth is via
+      Application Default Credentials (`gcloud auth application-default login`), not a
+      service-account key — this GCP project enforces `iam.disableServiceAccountKeyCreation`,
+      which blocks key creation outright, and Workload Identity Federation for Vercel wasn't
+      worth the remaining time. **Consequence: the live Vercel app stays on `gemini-direct`**
+      (Vercel has no `gcloud` session to draw ADC from) — `agent-builder` is demonstrated via
+      local run + the demo video, not the public URL. See `.env.local.example` for exact
+      setup steps and this trade-off spelled out.
 
 Submitting before these are done risks disqualification on "Technological Implementation"
 — see the earlier gap analysis in `README.md`.
@@ -131,11 +134,13 @@ exactly where to paste it (`.env.local`, `GEMINI_API_KEY=`).
 
 ## What's next
 
-Verify `lib/agent-backends/agent-builder.ts` against a real GCP project — it's code-complete
-but untested end-to-end pending Vertex AI API + service-account setup (see the checklist
-above). `lib/partner-mcp.ts` has the same seam already proven out for ClickHouse; adding a
-real Grafana client behind it is the same shape of work, not a new pattern. Then implement
-the second domain (Healthcare/Radiology worklist) that this engine was designed to support.
+Get `agent-builder` onto the live Vercel deployment, not just local dev — that means either
+getting the `iam.disableServiceAccountKeyCreation` org policy lifted (needs an Organization
+Policy Administrator, not just a project Owner) or implementing Workload Identity Federation
+for Vercel's serverless environment. `lib/partner-mcp.ts` has the same "real integration"
+seam already proven out end-to-end for ClickHouse; adding a real Grafana client behind it is
+the same shape of work, not a new pattern. Then implement the second domain
+(Healthcare/Radiology worklist) that this engine was designed to support.
 
 Widen `add_policy_rule`'s grammar from a single flat condition to the same compound
 AND/OR/NOT trees `grid-engine.ts` already evaluates for hand-authored rules, so an operator
