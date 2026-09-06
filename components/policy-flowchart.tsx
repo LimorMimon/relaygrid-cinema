@@ -8,6 +8,7 @@
  * shown together as one branching diagram (see DecisionLadderFlowchart).
  */
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CircleCheck, Info, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { validatePolicyRule, type PolicyRule, type PolicyRuleValidation, type QueryNode, type PolicyRiskLevel } from "@/lib/grid-engine";
@@ -253,7 +254,17 @@ export function FlowchartModalShell({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  // Rendered via a portal straight onto <body> rather than in place — every
+  // call site nests this deep inside one of the three sticky-positioned
+  // column <aside>s (components/cinema-grid-app.tsx), and CSS treats a
+  // `position: sticky` ancestor as its own stacking context, which traps
+  // this modal's z-50 inside that one column's paint order. The sibling
+  // column that comes later in the DOM (e.g. the chat column) then paints
+  // on top of it regardless of z-index, making the modal look like it's
+  // being hidden/clipped by that column. A portal sidesteps the whole
+  // ancestor-stacking-context question by not being a descendant of any of
+  // them.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
         className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded border border-line-bright bg-panel p-5 shadow-[0_0_40px_rgba(0,0,0,0.5)]"
@@ -268,7 +279,8 @@ export function FlowchartModalShell({
         <p className="mb-3 text-xs leading-5 text-ink-dim">{description}</p>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
