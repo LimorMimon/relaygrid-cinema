@@ -89,9 +89,18 @@ this size. RelayGrid's agent does — through real MCP tool calls, not a script.
 "Auto-executed: ..." line already sitting in the Agent Chat log from page load. No click
 needed — this state exists from the moment the session was seeded.]**
 *"Not everything needs a human. Simple, reversible fixes — like restarting a stuck audio
-encoder — the policy engine just does, and logs. Anything riskier stops and waits for you."*
-This is the cheapest possible new beat (nothing to click, nothing to break) and it plants
-the AUTO/APPROVAL vocabulary the policy-rule beat below reuses instead of re-explaining.
+encoder — the policy engine just does, and logs."*
+**[Immediately pan to one of the "Pending Approvals" cards already sitting on screen from
+load (e.g. "Switch to Failover CDN" — Policy Rule #3, human approval required). Highlight
+its "Approve & Execute" button — do NOT click it yet, this is just pointing at it.]**
+*"Anything riskier — like rerouting a stream to a different CDN — stops right here and
+waits for a person. That's what this card is: prepared, not applied."*
+Completing the contrast in the same beat (AUTO example + APPROVAL example, side by side)
+is what makes it land as one idea instead of two disconnected facts. Still zero clicks —
+the card is already there; approving one for real happens later, on STREAM-CDN-804's own
+card, so this pointed-at card is left untouched and still pending when that comes.
+This is the cheapest possible new beat (only one click total, later) and it plants the
+AUTO/APPROVAL vocabulary the policy-rule beat below reuses instead of re-explaining.
 
 **0:38–1:05 — Live agentic query (Technological Implementation)**
 **[Open the Judge Demo Guide panel → click "Send to chat" on step 1: "Show streams with
