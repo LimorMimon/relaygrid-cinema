@@ -25,7 +25,61 @@ The engine (`lib/grid-engine.ts`, `lib/domains/types.ts`, `lib/mcp-tools.ts`) kn
 1. **Native WebMCP** — registered via `document.modelContext.registerTool` whenever the browser exposes it, so any MCP-aware agent browser can drive the grid directly.
 2. **The in-app Gemini chat panel** — the browser sends the conversation + tool schemas to `app/api/agent/route.ts`, a thin, domain-agnostic relay that hands the turn to whichever `AgentBackend` is selected (`lib/agent-backends/`, via `AGENT_BACKEND`). Both implementations share the same function-calling loop (`lib/agent-backends/genai-shared.ts`) and differ only in how their `@google/genai` client authenticates: `gemini-direct` (default) holds `GEMINI_API_KEY` server-side against the public AI Studio API; `agent-builder` uses `vertexai: true` against a real GCP project via a service account. When the model returns a `functionCall`, the browser executes it locally against the real grid state and sends the result back to continue the loop.
 
-**Safety boundary**: `execute_action` is intentionally *not* given to Gemini — only `preview_action` is. The mutating step only ever runs when a human clicks **Approve & Execute** on the action card the UI renders from a preview, calling the tool directly. Gemini can prepare, but never confirm, a change.
+**Safety boundary**: `execute_action` is not given to Gemini or to native WebMCP — only `preview_action` is (`hooks/use-grid-agent.ts`'s `agentVisibleSchemas`, which filters `execute_action` out of both surfaces before they're built). The mutating step only ever runs when a human clicks **Approve & Execute** on the action card the UI renders from a preview, which calls the tool directly through `createToolDispatcher` — a path that never goes through either agent surface. See "Security notes" below for why this is enforced by what's excluded from the tool list, not by asking the model nicely, and for the other places the same reasoning applies.
+
+## Security notes
+
+Not a claim that this is "secure" in any absolute sense — a record of the specific risks
+this codebase actually has to deal with, given that both an LLM and real external SaaS
+accounts sit in the request path, and what's actually done about each one. Found and fixed
+during this build, not designed in from the start — worth being honest about that too.
+
+- **A tool that mutates data must not be something an agent can decide to call on its own.**
+  `execute_action` was, for a while, present in the exact same schema list handed to Gemini
+  and to native WebMCP as every read-only tool — its only gate was a client-supplied
+  `humanConfirmed` boolean, which a model can simply set itself if a crafted prompt (or an
+  ordinarily-phrased one it just reasons its way into) asks it to. Nothing server-side
+  checked that a real human had actually clicked anything. The fix isn't a stronger prompt
+  instruction telling Gemini not to call it — instructions are advice, not enforcement, and
+  a sufficiently adversarial or just unlucky input can talk a model out of following one.
+  The fix is that the tool is no longer in the list a model can choose from at all
+  (`agentVisibleSchemas` in `hooks/use-grid-agent.ts`); the only remaining caller is the
+  UI's own button handler, which was never mediated by an LLM in the first place.
+- **The same reasoning applies harder to partner MCP tools, because they touch a real
+  external account with no preview step at all.** The vendored `mcp-grafana` server exposes
+  81 tools against this project's actual Grafana Cloud stack, and — unlike this app's own
+  grid actions — a partner tool call is resolved and executed immediately server-side
+  (`app/api/agent/route.ts`) the moment the model asks for it; there is no equivalent of
+  `preview_action`/`execute_action` in that path at all. Roughly a quarter of those 81 tools
+  are real writes — `update_dashboard`, `create_folder`, `alerting_manage_rules`,
+  `delete_snapshot`, and a generic `grafana_api_request` passthrough with no restriction on
+  method or endpoint. All 81 were originally merged into Gemini's tool list without
+  distinction. The fix uses the MCP spec's own tool annotations (`readOnlyHint`,
+  `destructiveHint`), which `mcp-grafana` already self-declares accurately per tool, and
+  only advertises or dispatches a partner tool when `readOnlyHint === true` — checked live
+  against the running server: 62 of 81 survive the filter, and every mutating one is
+  excluded. A tool with no annotations at all is treated as unsafe, not safe — default-deny,
+  not default-allow, since trusting an unannotated tool to be harmless is exactly the
+  assumption that was wrong the first time.
+- **A schema only prevents injection for the parts of it that are actually structured.**
+  `apply_query`'s `field` and `operator` parameters are closed enums checked against the
+  domain's real field list (`validateQuery` in `lib/grid-engine.ts`) — not just "the model
+  is well-behaved enough to only send valid ones," but a second, independent check of
+  whatever the model actually sent back, on the assumption that schema adherence is a strong
+  bias in a function-calling model, not a guarantee. A `string`-typed parameter with no enum
+  is a different situation entirely: the schema enforces "this is text," nothing about what's
+  inside that text. `mcp-clickhouse`'s `run_query` tool takes exactly one such parameter —
+  raw SQL as a string — which is why this project's ClickHouse write path
+  (`lib/partner-mcp.ts`'s `ingestEvent`) escapes every user-influenced string value
+  (`chEscape`, backslash- and quote-escaping) before it goes anywhere near a `VALUES (...)`
+  clause, rather than assuming the presence of a schema already handled it.
+- **What isn't specifically hardened here**: the underlying model's susceptibility to
+  prompt injection in the first place (a malicious policy-rule description or report title
+  could still influence *what* Gemini decides to try, just not what it's structurally
+  capable of doing once it tries); rate limiting or abuse protection on the public API routes;
+  and anything downstream of a partner's own account-level permissions (a real Grafana
+  service-account token scoped more broadly than it needs to be is a risk this codebase
+  can't see or fix from the outside).
 
 ## Getting started
 
