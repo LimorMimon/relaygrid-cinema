@@ -204,10 +204,42 @@ export const AgentChatPanel = forwardRef<
         contentsRef.current = history;
       }
       if (!gaveFinalAnswer) {
-        appendMessage({
-          kind: "error",
-          text: "Reached the tool-call limit for this turn without a final answer — see the ⚙ log above for what was actually done. Try a more specific follow-up.",
-        });
+        // Rather than surface a bare "ran out of turns" error, force one more
+        // call with an explicit instruction to stop calling tools and answer
+        // in plain text now — passing tools: [] backs that up structurally,
+        // not just by asking nicely. This turns an occasional over-eager
+        // exploration (seen live: a broad or ambiguous request leading the
+        // model to keep re-querying instead of settling on an answer) into a
+        // still-useful, if less efficient, real answer instead of a dead end.
+        history = [...history, { role: "user" as const, parts: [{ text: "You've reached your tool-call budget for this turn. Based on everything above, give your best final answer now in plain text — do not call any more tools." }] }];
+        contentsRef.current = history;
+        try {
+          const res = await fetch("/api/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: history, tools: [], systemInstruction }),
+          });
+          const data = await res.json();
+          if (res.ok && !data.error) {
+            if (data.content) {
+              history = [...history, data.content as GeminiContent];
+              contentsRef.current = history;
+            }
+            const text = typeof data.text === "string" ? data.text.trim() : "";
+            if (text) {
+              appendMessage({ kind: "assistant", text, backend: typeof data.backend === "string" ? data.backend : undefined });
+              gaveFinalAnswer = true;
+            }
+          }
+        } catch {
+          // Fall through to the error message below.
+        }
+        if (!gaveFinalAnswer) {
+          appendMessage({
+            kind: "error",
+            text: "Reached the tool-call limit for this turn without a final answer — see the ⚙ log above for what was actually done. Try a more specific follow-up.",
+          });
+        }
       }
     } catch (error) {
       appendMessage({ kind: "error", text: error instanceof Error ? error.message : "Something went wrong talking to Gemini." });
