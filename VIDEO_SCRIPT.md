@@ -145,11 +145,13 @@ actual matching stream IDs in that group, not just the count.]**
 This is the step that makes the report feel real rather than decorative: a judge can see
 the aggregate claim ("2 streams in EU-West") cash out into actual record IDs on demand.
 **[Cut to the Active tab → click "Run Report" on one of the existing saved reports (e.g.
-"Degraded or failing streams by Channel / Program").]**
+"Degraded or failing streams by Channel / Program"). Click one of ITS group rows too, to
+show the same detailed drill-down works here as well — a different group than the one
+opened above, so it doesn't look like a repeat of the same click.]**
 *"Saved reports run the exact same way — same engine, same live data, just already
 named and kept around."*
 Fast cut is fine here — the point is "compose-now" and "already-saved" hit the identical
-mechanism, which is the actual technical claim worth making.
+mechanism (drill-down included), which is the actual technical claim worth making.
 
 **2:42–3:02 — Partner Track proof (pass/fail requirement — do not cut for time)**
 **[Open Integrations → the Grafana tab (the declared track). Point out the green "Live —
