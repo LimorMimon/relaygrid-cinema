@@ -58,7 +58,17 @@ export async function POST(request: Request) {
       partners.map(async (partner) => {
         try {
           const partnerTools = await partner.listTools();
-          for (const t of partnerTools) {
+          // Default-deny, not default-allow: a partner tool call is resolved
+          // and executed right here with no preview/approval step at all
+          // (unlike this app's own grid actions), against a real external
+          // account — confirmed live that mcp-grafana's 81 tools include
+          // real writes (update_dashboard, create_folder, alerting_manage_*,
+          // an unrestricted grafana_api_request passthrough, ...). Only a
+          // tool the server itself self-declares readOnlyHint: true is
+          // exposed to Gemini or dispatchable at all; anything ambiguous or
+          // undeclared is treated as unsafe rather than assumed safe.
+          const readOnlyTools = partnerTools.filter((t) => t.annotations?.readOnlyHint === true);
+          for (const t of readOnlyTools) {
             toolOwner.set(t.name, partner);
             partnerToolDecls.push({ name: t.name, description: t.description, parameters: t.inputSchema });
           }

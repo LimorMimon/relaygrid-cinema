@@ -47,6 +47,21 @@ export type PartnerMcpTool = {
   name: string;
   description: string;
   inputSchema?: unknown;
+  /**
+   * Passed through from the MCP spec's own tool annotations, not invented
+   * here — confirmed live that the real mcp-grafana server self-declares
+   * these accurately (e.g. `list_datasources` → readOnlyHint: true,
+   * `update_dashboard` → readOnlyHint: false, destructiveHint: true).
+   * app/api/agent/route.ts uses this to default-deny any partner tool from
+   * ever reaching Gemini unless it's explicitly self-declared read-only —
+   * partner tool calls execute immediately server-side with no
+   * preview/approval step at all, unlike this app's own grid actions, so a
+   * mutating tool (delete a snapshot, rewrite a real dashboard, an
+   * unrestricted `grafana_api_request` passthrough) being callable at all
+   * would be a real prompt-injection target against a live external
+   * account. A tool with no annotations is treated as unsafe, not safe.
+   */
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
 };
 
 export interface PartnerMcpClient {
@@ -160,7 +175,12 @@ class ClickHousePartnerMcpClient implements PartnerMcpClient {
   async listTools(): Promise<PartnerMcpTool[]> {
     const client = await this.getClient();
     const { tools } = await client.listTools();
-    return tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema }));
+    return tools.map((t) => ({
+      name: t.name,
+      description: t.description ?? "",
+      inputSchema: t.inputSchema,
+      annotations: t.annotations as PartnerMcpTool["annotations"],
+    }));
   }
 
   async callTool(name: string, args: unknown): Promise<unknown> {
@@ -318,7 +338,12 @@ class GrafanaPartnerMcpClient implements PartnerMcpClient {
   async listTools(): Promise<PartnerMcpTool[]> {
     const client = await this.getClient();
     const { tools } = await client.listTools();
-    return tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema }));
+    return tools.map((t) => ({
+      name: t.name,
+      description: t.description ?? "",
+      inputSchema: t.inputSchema,
+      annotations: t.annotations as PartnerMcpTool["annotations"],
+    }));
   }
 
   async callTool(name: string, args: unknown): Promise<unknown> {
