@@ -117,6 +117,14 @@ components/              RelayGrid, Agent Chat, Action Card, Judge Demo Guide
 
 `./reference` is a local, git-ignored clone of the original `relaygrid-webmcp` project, kept for research only — it is not part of this app.
 
+## Going to production
+
+This build is shaped for the hackathon demo — real Vertex AI calls, real Grafana Cloud
+writes, but a generated/seeded dataset and simulated action execution. See
+[PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for what needs to change (including a
+time-sensitive one: Grafana Cloud's free tier is a 14-day trial) before this runs against
+a real customer's data and infrastructure.
+
 ## License
 
 [MIT](./LICENSE)
