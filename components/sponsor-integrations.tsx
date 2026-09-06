@@ -337,7 +337,13 @@ export function SponsorIntegrations() {
               type="button"
               onClick={() => setTab(id)}
               className={`flex items-center gap-1.5 rounded-t px-2.5 py-1.5 font-display text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                isSelected ? "border border-b-0 border-signal/50 bg-panel text-signal" : "text-ink-faint hover:text-ink-dim"
+                // -mb-px + z-10 pulls the selected tab down by the container's
+                // own border-b-line width and stacks it above that line, so
+                // the tab's bg-panel fill covers the seam instead of the
+                // container's border cutting across its side borders —
+                // otherwise the teal border looked like it was clipped short
+                // rather than flowing into the panel below it.
+                isSelected ? "relative z-10 -mb-px border border-b-0 border-signal/50 bg-panel text-signal" : "text-ink-faint hover:text-ink-dim"
               }`}
             >
               <Icon className="size-3" /> {label}
