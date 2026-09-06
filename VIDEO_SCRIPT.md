@@ -139,6 +139,11 @@ proves its own tier by firing with no click at all.
 "Streams with low bitrate, grouped by CDN provider, last 24 hours" — click Generate.]**
 *"Same idea for analytics — describe what you want, Gemini configures the query."*
 **[The report result opens immediately: a real total, grouped bars with live counts.]**
+**[Click one of the group rows (e.g. "EU-West") to expand it into detailed mode — the
+actual matching stream IDs in that group, not just the count.]**
+*"It's not just a number — click into any group and see exactly which streams it means."*
+This is the step that makes the report feel real rather than decorative: a judge can see
+the aggregate claim ("2 streams in EU-West") cash out into actual record IDs on demand.
 **[Cut to the Active tab → click "Run Report" on one of the existing saved reports (e.g.
 "Degraded or failing streams by Channel / Program").]**
 *"Saved reports run the exact same way — same engine, same live data, just already
