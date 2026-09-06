@@ -226,3 +226,9 @@ broadcasts than on night reruns" directly from chat. Separately, a genuinely new
 capability — staged, timed remediation ("try a lighter fix first; escalate only if it
 hasn't helped within N seconds") — would need real state tracking per record across ticks,
 which the current stateless-per-tick evaluator doesn't have yet.
+
+The Judge Demo Guide's four steps are hardcoded (`GUIDE_STEPS`); the same Active/Suggested
+pattern already used for Policy Rules and Reports could extend to letting an operator author
+their own multi-step scenario — a saved sequence of prompts, run one at a time or all at once
+— and add it alongside the built-in one. Useful for a team that wants its own repeatable
+walkthrough (a specific outage playbook, an onboarding tour) without touching code.
