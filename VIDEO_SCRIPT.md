@@ -53,78 +53,130 @@ Two ways to satisfy "English or English subtitles":
   pressure feels risky — the script below is written so every beat's on-screen text line can
   stand alone as a caption.
 
-## Shot list (target ~2:50 total)
+## Shot list v2 (target ~2:50 total — revised to add automation-tier + policy/report
+authoring content on top of the v1 take, faster caption pacing throughout)
 
-Each beat: **[on-screen action]** — *caption/narration line* — why it's here.
+Rationale for the reorganization: v1 (the recorded 2:11 take) proved the core loop works
+and captured both pass/fail proofs cleanly — none of that moves. What's new is three
+things the judges can't currently see: (1) that most fixes never reach a human at all,
+(2) that the policy engine's rule set is itself editable/extensible live, not fixed at
+launch, and (3) that the same is true of analytics — a report can be composed in plain
+English on the spot, not just picked from a canned list. All three are placed as ONE
+contiguous "how the system governs itself" block, inserted after the cascade moment and
+before the two required partner/cloud proofs — right where the video pivots from
+"watch it handle one incident" to "here's the machinery behind that," which is also the
+natural lead-in to "and here's the real infrastructure underneath" (Grafana/Google Cloud).
+The automation-tier contrast (item 1) is pulled forward to right after "The problem"
+instead, because it's free (zero new clicks — reuses on-screen state already visible at
+load) and it sets up vocabulary ("AUTO" vs "APPROVAL" badges) that the new policy-rule beat
+then pays off. Caption holds throughout are ~2.5s (~2s for short lines) instead of ~4s.
 
-**0:00–0:12 — Open**
+Each beat: **[on-screen action]** — *caption line* — why it's here.
+
+**0:00–0:10 — Open**
 **[App loads at relaygrid-cinema.vercel.app. Header badges visible: "WebMCP Live" and
-"Google Cloud · Vertex AI" with its pulsing dot — this is the live public URL, already
-running through Vertex AI via Workload Identity Federation, not a local-only demo.]**
+"Google Cloud · Vertex AI" with its pulsing dot.]**
 *"RelayGrid Cinema — a shared human-agent control room for 220 live media streams."*
-Establishes the product in one shot; the header badges are already proof-of-life for later,
-and there's no need to cut away from this URL for the rest of the recording.
+Establishes the product in one shot; the header badges are already proof-of-life for later.
 
-**0:12–0:30 — The problem**
+**0:10–0:24 — The problem**
 **[Scroll the grid briefly — 220 rows, CDN/bitrate/audio/subtitle columns visible.]**
 *"An operator can't manually correlate bitrate, audio, and subtitle faults across a fleet
 this size. RelayGrid's agent does — through real MCP tool calls, not a script."*
-Sets up "Potential Impact" (real problem, real audience) before touching a single button.
 
-**0:30–1:00 — Live agentic query (Technological Implementation)**
+**0:24–0:38 — Automation has two tiers (NEW, zero new clicks)**
+**[Point at an existing row already carrying an "AUTO-RESOLVED" badge, and an
+"Auto-executed: ..." line already sitting in the Agent Chat log from page load. No click
+needed — this state exists from the moment the session was seeded.]**
+*"Not everything needs a human. Simple, reversible fixes — like restarting a stuck audio
+encoder — the policy engine just does, and logs. Anything riskier stops and waits for you."*
+This is the cheapest possible new beat (nothing to click, nothing to break) and it plants
+the AUTO/APPROVAL vocabulary the policy-rule beat below reuses instead of re-explaining.
+
+**0:38–1:05 — Live agentic query (Technological Implementation)**
 **[Open the Judge Demo Guide panel → click "Send to chat" on step 1: "Show streams with
 bitrate below 3Mbps or audio/subtitle sync issues in the last 24h."]**
 *"Ask in plain language — Gemini calls the grid's own MCP tool live, and the view updates
 in real time."*
 **[Grid filters down; STREAM-CDN-804 is now visible/flagged.]**
-This is the first proof it's a real function call, not a canned filter — the result changes
-because Gemini actually called `apply_query`.
 
-**1:00–1:30 — Explain + non-mutating preview (the safety story)**
+**1:05–1:28 — Explain + non-mutating preview (the safety story)**
 **[Steps 2–3 of the guide: verify the flagged stream, then preview the remediation.]**
 *"Gemini explains why this stream matched, then prepares a fix — but nothing changes yet."*
 **[The "MCP Action Preview — no changes made" card appears.]**
-This card's own copy already says "no changes made" on screen — let it read itself; don't
-over-narrate it.
+Let the card's own on-screen copy read itself; don't over-narrate it.
 
-**1:30–2:00 — Human approval, and the unscripted moment**
-**[Click "Approve & Execute" on the action card, live, on camera.]**
+**1:28–1:55 — Human approval, and the unscripted moment**
+**[Click "Approve & Execute" on the action card, live, on camera — white pulse highlight
+on the click.]**
 *"A human has to click this. Gemini can prepare a fix; it can never execute one."*
-**[Change applies — Actions Executed counter increments, chat logs the result. Watch for
-a NEW action card to appear a moment later — approving this fix satisfies a *different*
-policy rule's condition (Rule #6, a compound "second independent fault" check) on the same
-record, so the engine escalates a fresh approval card live.]**
+**[Change applies — Actions Executed counter increments. A NEW, visibly different action
+card appears a moment later — teal row-highlight + caption proving it's a distinct
+approval, not the one just clicked. Approving the first fix satisfied a second, different
+policy rule's condition on the same record.]**
 *"Fixing this just satisfied a second, different rule — the engine reacted to real state,
 not a scripted sequence."*
-This is the strongest "Quality of the Idea" / "non-obvious" moment available in the app
-right now — it happened by accident in testing and is genuinely the policy engine reasoning
-over live state, not a demo trick. Worth calling out explicitly rather than treating it as
-noise.
+Strongest "Quality of the Idea" moment in the app — keep this exactly as recorded in v1.
 
-**2:00–2:25 — Partner Track proof (pass/fail requirement — do not cut for time)**
+**1:55–2:20 — The rule set is editable, live (NEW)**
+**[Integrations-adjacent panel: Policy Rules tab → "Suggested" sub-tab. Point at a
+candidate rule card: description, an AUTO or APPROVAL badge, a real "MATCHES N STREAMS
+NOW" count computed from live data — not canned text.]**
+*"Suggestions aren't fixed at launch either — the engine keeps proposing new rules from
+whatever's actually happening in the fleet right now."*
+**[Click "+ Add" on the AUTO-tagged suggestion ("Subtitles missing entirely → auto-resync
+the subtitle track"). It moves into Active immediately.]**
+*"Add one, and — because this one's tagged AUTO — it can fire on a matching stream
+immediately, with no approval step."*
+**[If a matching stream picks up a fresh "AUTO-RESOLVED" badge on the grid within a second
+or two of the click — it does, reliably, against the seeded data — hold on it briefly.]**
+This directly demonstrates items (1) and (2) from the automation-tier beat above acting
+together: adding a rule is itself the "configure the automation" moment, and an AUTO rule
+proves its own tier by firing with no click at all.
+
+**2:20–2:42 — Reports: compose one live, then run an existing one (NEW)**
+**[Reports tab. Type a plain-English description into the "Describe a report" box — e.g.
+"Streams with low bitrate, grouped by CDN provider, last 24 hours" — click Generate.]**
+*"Same idea for analytics — describe what you want, Gemini configures the query."*
+**[The report result opens immediately: a real total, grouped bars with live counts.]**
+**[Cut to the Active tab → click "Run Report" on one of the existing saved reports (e.g.
+"Degraded or failing streams by Channel / Program").]**
+*"Saved reports run the exact same way — same engine, same live data, just already
+named and kept around."*
+Fast cut is fine here — the point is "compose-now" and "already-saved" hit the identical
+mechanism, which is the actual technical claim worth making.
+
+**2:42–3:02 — Partner Track proof (pass/fail requirement — do not cut for time)**
 **[Open Integrations → the Grafana tab (the declared track). Point out the green "Live —
 Written to real Grafana Cloud" badge, click a log line to expand its real payload.]**
 *"Every action is also written into a real Grafana Cloud Loki stream — not a mock."*
 **[If feasible: cut or split-screen to the actual Grafana Cloud Explore view, showing the
-same log line having just landed there.]** This external confirmation is worth the extra
-editing effort — it's the single clearest piece of evidence
-for the "actively use Grafana at runtime" pass/fail check, stronger than anything the
-app's own UI can claim about itself.
+same log line having just landed there.]**
 
-**2:25–2:45 — Google Cloud Agent Builder proof (pass/fail requirement — do not cut for
-time)**
-**[Still on the live public URL — no cut needed. Point at the header badge, already
-visible since 0:00. Ask one more short question in chat and let the answer land, then
-point at its "via Google Cloud · Vertex AI" tag underneath the message.]**
-*"Every answer here is tagged — this one really went through Google Cloud Agent Builder on
-Vertex AI, using Workload Identity Federation: no static key file to ever leak, only
-short-lived credentials issued fresh per request. More secure than the traditional
-service-account-key setup, straight from this live URL."*
-**[If feasible: split-screen with Google Cloud Console's Vertex AI API metrics showing the
-live request landing in real time — extra external confirmation, not required since the
-UI's own tag is already real, but a nice-to-have.]**
+**3:02–3:20 — this overshoots 3:00; see "Fitting back under 3:00" below.**
 
-**2:45–2:50 — Close**
+## Fitting back under 3:00 (hard cap — the rules page enforces this by only judging the
+first 3 minutes, so this is not optional)
+
+The block above lands at ~3:20 including both required proofs, which is ~20–30s over.
+Before recording, cut from here, in this order (stop as soon as you're under ~2:50):
+
+1. **Cut the second half of the Reports beat first** (the "run an existing report" cut) —
+   it's the single most cuttable beat: it repeats a mechanism the compose-now shot already
+   proved, so losing it costs no new information, only a confirmation. Saves ~8–10s.
+2. **If still over, shorten the Policy Rules beat** to just the "+Add" click and the
+   AUTO-badge landing — drop the opening line about suggestions being computed live and
+   let the on-screen "MATCHES N STREAMS NOW" text carry that claim by itself. Saves ~5–8s.
+3. **Do not cut**: the automation-tier beat (0:24–0:38, it's already the cheapest beat in
+   the video), the cascade moment (1:28–1:55, the strongest idea-quality evidence), or
+   either required partner/cloud proof.
+
+The Google Cloud Agent Builder proof beat from v1 (header badge + one more tagged chat
+answer, ~20s) still needs to run after the Grafana beat and before the close — budget for
+it explicitly when timing the actual take; it isn't listed above only because it is
+unchanged from v1 and still mandatory.
+
+**Close (last ~5s, whatever time remains)**
 **[One more wide shot of the full three-column layout.]**
 *"One domain today — media operations. The same engine is built to carry a second, like
 healthcare, tomorrow."*
