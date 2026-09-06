@@ -154,7 +154,8 @@ mechanism, which is the actual technical claim worth making.
 **2:42–3:02 — Partner Track proof (pass/fail requirement — do not cut for time)**
 **[Open Integrations → the Grafana tab (the declared track). Point out the green "Live —
 Written to real Grafana Cloud" badge, click a log line to expand its real payload.]**
-*"Every action is also written into a real Grafana Cloud Loki stream — not a mock."*
+*"Every action is written live into a real Grafana Cloud Loki stream, right now — not a
+mock, not a replay."*
 **[If feasible: cut or split-screen to the actual Grafana Cloud Explore view, showing the
 same log line having just landed there.]**
 
