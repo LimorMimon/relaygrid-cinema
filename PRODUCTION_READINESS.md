@@ -46,13 +46,55 @@ than a demo.
 Every record, audit-log entry, policy rule, saved report, and pending action lives in
 `useState` inside `useGridAgent` (`hooks/use-grid-agent.ts`). A page reload loses
 everything except what a real backend would call the seed data. A real environment
-needs:
-- A real datastore for records (replacing the generated 220-stream seed in
-  `lib/domains/cinema.ts` with a live feed from actual CDN/encoder telemetry).
-- Persisted audit log, policy rules, and reports (currently `audit`, `policyRules`,
-  `reports`, `savedReportSpecs` are all in-memory only).
-- Concurrency handling — right now two browser tabs pointed at the same deployment have
-  two independent, unsynced copies of "reality."
+needs persisted audit log, policy rules, and reports (currently `audit`, `policyRules`,
+`reports`, `savedReportSpecs` are all in-memory only), plus concurrency handling — right
+now two browser tabs pointed at the same deployment have two independent, unsynced
+copies of "reality."
+
+## Connecting to a customer's real data source, not the generated seed
+
+Right now every one of the 220 streams comes from `generateStreams()`
+(`lib/domains/cinema.ts:112`), called exactly once, synchronously, on mount
+(`useState<TRecord[]>(() => domain.generateRecords())` in `hooks/use-grid-agent.ts:110`).
+Nothing about the grid, the chat tools, policy rules, or reports cares where that array
+came from — they all just operate on whatever `TRecord[]` is in state (that's the whole
+point of the `DomainConfig` abstraction in `lib/domains/types.ts`). That means hooking up
+a real customer's data touches exactly two seams, and nothing else in the engine needs to
+change:
+
+1. **Read path (ingestion).** `generateRecords` needs to become a real, ongoing feed
+   instead of a one-shot synthetic array:
+   - Swap it for a fetch against the customer's actual telemetry source (CDN
+     provider's status API, an encoder fleet's monitoring endpoint, a Kafka topic, a
+     Prometheus/Grafana metrics API — whatever they actually run today) that returns
+     data shaped like `StreamRecord`.
+   - Add a way for state to change *without* a human clicking anything in this app —
+     today the only thing that mutates `records` outside of an approved action is the
+     demo-only `Inject Incident` button. A real system needs either a polling loop
+     (server-side, on an interval, pushed to the client) or a subscription (webhook
+     receiver, WebSocket, or SSE endpoint) so a stream that goes bad on the customer's
+     actual infrastructure shows up here on its own, the way `STREAM-CDN-804` only
+     shows up today because it's hardcoded into the seed.
+   - This read path should land in a real datastore (see "No persistence" above), not
+     straight into React state, so the ingestion job and the UI aren't the same process.
+
+2. **Write path (executing an action).** This is the more important gap:
+   `planCinemaAction` (`lib/domains/cinema.ts:175`) is a **pure, synchronous, local
+   simulation**. When an operator clicks "Approve & Execute," nothing actually reroutes
+   a CDN or restarts an encoder anywhere — the function just computes a plausible-looking
+   patch (`restoredBitrate()` is a deterministic hash of the record's own ID, not a real
+   reading) and applies it to local state. For real use, `planAction` needs to become
+   async and call the customer's actual control-plane APIs (their CDN's failover/reroute
+   API, their encoder fleet's restart endpoint, their subtitle pipeline's resync
+   trigger) — with real success/failure handling, retries, and timeouts, since a real
+   API call can fail in ways a local object patch never does. The record's displayed
+   state should then reflect what the read path (above) confirms actually happened, not
+   an optimistic local guess.
+
+Everything upstream of these two seams — `runQuery`, `evaluatePolicyRules`, the MCP tool
+schemas, the chat panel, Reports — already only knows about the `TRecord[]` shape and the
+`DomainConfig` contract, so none of it needs to change to point this at a real customer's
+data. That separation is already correct; it just isn't wired to anything real yet.
 
 ## No auth or access control
 
