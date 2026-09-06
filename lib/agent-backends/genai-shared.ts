@@ -1,5 +1,5 @@
 import type { GoogleGenAI } from "@google/genai";
-import type { AgentTurnRequest, AgentTurnResponse } from "./types";
+import type { AgentContent, AgentTurnRequest, AgentTurnResponse } from "./types";
 
 /**
  * Shared between gemini-direct.ts (AI Studio) and agent-builder.ts (Vertex
@@ -98,8 +98,20 @@ export async function runGenAiTurn(ai: GoogleGenAI, model: string, request: Agen
       });
 
       const candidate = response.candidates?.[0];
+      // Normalize role explicitly rather than trust the SDK's raw shape —
+      // confirmed live that a turn's candidate.content can come back with no
+      // `role` at all (seen after several function-calling turns in one
+      // conversation). The client blindly pushes this into its own history
+      // array and replays the whole thing on the next message; an entry
+      // missing `role` there isn't a valid Content object, and the next
+      // generateContent call fails with "Mixing Content and Parts is not
+      // supported" — a confusing, hard-to-diagnose error one full turn later,
+      // for a cause that's fixable right here at the source.
+      const content: AgentContent | null = candidate?.content?.parts?.length
+        ? { role: "model", parts: candidate.content.parts as AgentContent["parts"] }
+        : null;
       return {
-        content: (candidate?.content as AgentTurnResponse["content"]) ?? null,
+        content,
         text: response.text ?? null,
         functionCalls: (response.functionCalls ?? []).flatMap((call) =>
           call.name ? [{ name: call.name, args: call.args as Record<string, unknown> | undefined }] : [],
