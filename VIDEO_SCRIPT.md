@@ -119,9 +119,13 @@ not a scripted sequence."*
 Strongest "Quality of the Idea" moment in the app — keep this exactly as recorded in v1.
 
 **1:55–2:20 — The rule set is editable, live (NEW)**
-**[Integrations-adjacent panel: Policy Rules tab → "Suggested" sub-tab. Point at a
-candidate rule card: description, an AUTO or APPROVAL badge, a real "MATCHES N STREAMS
-NOW" count computed from live data — not canned text.]**
+**[Policy Rules tab → "Suggested" sub-tab. IMPORTANT reliability note: this list is
+computed once and cached — if the "Subtitles missing entirely" AUTO candidate isn't in
+the list, click the small refresh icon (⟲) next to "Candidates computed from real
+current data" to recompute it against live data before continuing; confirmed this
+reliably brings it back with 12 matches. Point at a candidate rule card: description,
+an AUTO or APPROVAL badge, a real "MATCHES N STREAMS NOW" count computed from live
+data — not canned text.]**
 *"Suggestions aren't fixed at launch either — the engine keeps proposing new rules from
 whatever's actually happening in the fleet right now."*
 **[Click "+ Add" on the AUTO-tagged suggestion ("Subtitles missing entirely → auto-resync
