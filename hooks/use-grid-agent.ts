@@ -225,9 +225,19 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       preview_action: (input) => {
         const s = live.current;
         if (!s.query) return reject(input.requestSummary, "Apply a filter before previewing an action.");
-        const currentBatch = s.results.slice(0, s.domain.batchSize);
+        // Same dedup the background policy-escalation loop already applies
+        // (see alreadyPendingIds below) — a record with an unrelated pending
+        // preview (e.g. from a policy rule) is skipped here too, so a chat
+        // request never creates a second, overlapping card for it.
+        const alreadyPendingIds = new Set(s.previews.flatMap((p) => p.plan.map((steps) => steps[0]?.recordId)));
+        const currentBatch = s.results.filter((r) => !alreadyPendingIds.has(r.id)).slice(0, s.domain.batchSize);
         if (currentBatch.length === 0) {
-          return reject(input.requestSummary, "The active filter has no matching records in the current visible batch.");
+          return reject(
+            input.requestSummary,
+            s.results.length > 0
+              ? "Every matching record already has a pending action awaiting approval — review the existing action card instead of creating a duplicate."
+              : "The active filter has no matching records in the current visible batch.",
+          );
         }
         const plan = buildActionPlan(currentBatch, input.actions, s.domain.planAction);
         const p: PreviewState<TRecord, TActionId> = {
