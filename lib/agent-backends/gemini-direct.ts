@@ -10,9 +10,15 @@ import { runGenAiTurn } from "./genai-shared";
  */
 export function createGeminiDirectBackend(): AgentBackend {
   const apiKey = process.env.GEMINI_API_KEY;
-  // "-lite" models tend to carry a much higher free-tier daily quota than
-  // the full flash/pro models, which matters a lot for iterative dev testing.
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  // Was "gemini-3.5-flash-lite" — its much higher free-tier quota is nice for
+  // dev iteration, but confirmed live that it's meaningfully less reliable at
+  // knowing when to stop calling tools and just answer: the function-calling
+  // loop in agent-chat-panel.tsx would occasionally exhaust its whole turn
+  // budget mid-conversation without ever producing final text, even for a
+  // single straightforward query. Plain "flash" (not "-lite") is documented
+  // as the tier meant for agentic/tool-calling workloads; worth the extra
+  // latency/cost for a demo that has to actually finish its turns.
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
   return {
     id: "gemini-direct",

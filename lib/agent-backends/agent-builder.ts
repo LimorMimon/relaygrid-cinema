@@ -49,7 +49,10 @@ export function createAgentBuilderBackend(): AgentBackend {
   const project = process.env.GOOGLE_CLOUD_PROJECT;
   const location = process.env.GOOGLE_CLOUD_LOCATION || "global";
   const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  // See gemini-direct.ts's matching comment — dropped "-lite" after
+  // confirming live it too often exhausts its tool-calling turn budget
+  // without ever producing a final answer, even for simple queries.
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
   const gcpProjectNumber = process.env.GCP_PROJECT_NUMBER;
   const gcpServiceAccountEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL;
