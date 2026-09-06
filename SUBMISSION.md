@@ -104,13 +104,14 @@ still stays behind an explicit human "Approve & Execute" click: the same trust-t
 autonomy AIOps already validates for risk-gating automated fixes, applied here to a domain
 that doesn't have it yet.
 
-This idea started smaller, in an earlier personal hackathon project: a single grid backed
-by an MCP server, walking through one scripted incident scenario. RelayGrid Cinema is that
-core pattern taken much further, built fresh for this contest — a standing policy engine
-with its own AUTO/APPROVAL tiers and live rule authoring, a natural-language reporting
-layer with drill-down, and real running integrations with both Grafana Cloud and
-ClickHouse, all on top of Google Cloud Agent Builder / Vertex AI. What was a proof of
-concept for one scenario is now a full operating surface for a fleet.
+The underlying pattern — a live grid governed through an MCP server — is one we'd explored
+before, in an earlier personal hackathon project: a single grid, one scripted incident
+scenario, no persistent automation. RelayGrid Cinema is a new codebase, written from
+scratch for this contest and this domain: a standing policy engine with its own
+AUTO/APPROVAL tiers and live rule authoring, a natural-language reporting layer with
+drill-down, and real running integrations with both Grafana Cloud and ClickHouse, all on
+top of Google Cloud Agent Builder / Vertex AI. Same instinct for the interaction model;
+everything built here is new, and built for media/streaming operations specifically.
 
 ## What it does
 
