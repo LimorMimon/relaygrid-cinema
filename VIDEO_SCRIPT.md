@@ -159,9 +159,16 @@ mechanism (drill-down included), which is the actual technical claim worth makin
 
 **2:42–3:02 — Partner Track proof (pass/fail requirement — do not cut for time)**
 **[Open Integrations → the Grafana tab (the declared track). Point out the green "Live —
-Written to real Grafana Cloud" badge, click a log line to expand its real payload.]**
+Written to real Grafana Cloud" badge.]**
 *"Every action is written live into a real Grafana Cloud Loki stream, right now — not a
 mock, not a replay."*
+**[Click one log line — ideally the Policy Rule #10 auto-fire from the Policy Rules beat
+above, so the two beats visibly connect — to open it in detailed mode: the expanded
+"DETECTED FIELDS" list (id, timestamp, ruleId, recordIds, changed/unchanged, etc.).]**
+*"Not just a line of text — every field of what actually happened is right there."*
+This is the same "aggregate claim → real underlying detail" move as the Reports
+drill-down, applied to the Grafana proof: don't just assert it's live, open one row and
+show the real structured payload backing that claim.
 **[If feasible: cut or split-screen to the actual Grafana Cloud Explore view, showing the
 same log line having just landed there.]**
 
