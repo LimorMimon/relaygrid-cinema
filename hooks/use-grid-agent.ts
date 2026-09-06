@@ -442,15 +442,29 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
   );
 
   const toolSchemas = useMemo(() => buildToolSchemas(domain), [domain]);
-  const geminiTools = useMemo(() => buildGeminiFunctionDeclarations(toolSchemas), [toolSchemas]);
+  // execute_action is the one tool that actually mutates data, and it's
+  // deliberately withheld from every *discoverable/callable-by-an-agent*
+  // surface below — Gemini's function-calling list and native WebMCP
+  // registration — even though createToolDispatcher (used by dispatch,
+  // below, and by the UI's own "Approve & Execute" button) still knows how
+  // to run it. Its only real gate is a client-supplied `humanConfirmed`
+  // boolean, which an LLM can simply set itself if the tool is ever on its
+  // menu — confirmed live that nothing else stops it. Excluding it here is
+  // what actually makes "only a human click can execute" true, rather than
+  // just a comment/prompt instruction an injected message could talk Gemini
+  // out of.
+  const agentVisibleSchemas = useMemo(() => toolSchemas.filter((schema) => schema.name !== "execute_action"), [toolSchemas]);
+  const geminiTools = useMemo(() => buildGeminiFunctionDeclarations(agentVisibleSchemas), [agentVisibleSchemas]);
   const dispatch = useMemo(() => createToolDispatcher(handlers), [handlers]);
 
   // Native WebMCP exposure: any MCP-aware agent browser can discover and call
   // these same tools directly, grounded in this document's live grid state.
+  // agentVisibleSchemas (not toolSchemas) for the same reason as geminiTools
+  // above — execute_action must never be a tool an external agent can find.
   useEffect(() => {
     if (!document.modelContext) return;
     const controller = new AbortController();
-    const tools = toolSchemas.map((schema) => ({
+    const tools = agentVisibleSchemas.map((schema) => ({
       name: schema.name,
       description: schema.description,
       inputSchema: schema.inputSchema,
@@ -460,7 +474,7 @@ export function useGridAgent<TRecord extends { id: string }, TActionId extends s
       .then(() => setWebmcpReady(true))
       .catch(() => setWebmcpReady(false));
     return () => controller.abort();
-  }, [toolSchemas, dispatch]);
+  }, [agentVisibleSchemas, dispatch]);
 
   // Continuously evaluate standing policy rules against the live grid.
   // AUTONOMOUS matches execute immediately, through the exact same
