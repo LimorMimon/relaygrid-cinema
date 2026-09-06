@@ -117,8 +117,9 @@ time)**
 visible since 0:00. Ask one more short question in chat and let the answer land, then
 point at its "via Google Cloud · Vertex AI" tag underneath the message.]**
 *"Every answer here is tagged — this one really went through Google Cloud Agent Builder on
-Vertex AI, authenticated with zero service-account keys, via Workload Identity Federation
-straight from this live URL."*
+Vertex AI, using Workload Identity Federation: no static key file to ever leak, only
+short-lived credentials issued fresh per request. More secure than the traditional
+service-account-key setup, straight from this live URL."*
 **[If feasible: split-screen with Google Cloud Console's Vertex AI API metrics showing the
 live request landing in real time — extra external confirmation, not required since the
 UI's own tag is already real, but a nice-to-have.]**
