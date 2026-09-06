@@ -102,6 +102,22 @@ card, so this pointed-at card is left untouched and still pending when that come
 This is the cheapest possible new beat (only one click total, later) and it plants the
 AUTO/APPROVAL vocabulary the policy-rule beat below reuses instead of re-explaining.
 
+**Live addition (recorded 2026-09-06, spliced into the actual v4 cut): "Inject Incident"**
+**[Click "Inject Incident" — a demo-only escape hatch (`injectIncident`/`injectRandomIncident`
+in `hooks/use-grid-agent.ts` and `lib/domains/cinema.ts`) that mutates one currently-healthy
+stream with a random new fault, live, so a judge can see the policy engine react to data that
+did not exist a second ago, not just the seeded scenario.]**
+*"One more live test — a new fault appears, and the engine resolves it on its own."*
+**[Whatever actually happened, captured honestly: STREAM-CDN-133 picked up an audio desync,
+Policy Rule #1 auto-restarted its encoder within ~1s — no card, no click — and the row flashes
+"AUTO-RESOLVED" while Actions Executed ticks up. The outcome is genuinely random (a healthy
+stream and a fault type are both chosen with `Math.random()`); this take happened to land on
+an AUTO-tier match, which is also the strongest possible outcome since it's live proof of the
+AUTO-tier claim from the beat above, not just a re-explanation of it.]**
+Placed immediately after the automation-tier contrast beat, before the bridge into the guided
+incident — it's the natural payoff of "not everything needs a human," now shown happening to
+brand-new data instead of asserted about the seeded one.
+
 **0:38–1:05 — Live agentic query (Technological Implementation)**
 **[Open the Judge Demo Guide panel → click "Send to chat" on step 1: "Show streams with
 bitrate below 3Mbps or audio/subtitle sync issues in the last 24h."]**
